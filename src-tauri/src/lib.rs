@@ -68,6 +68,7 @@ pub fn run() {
             commands::replay,
             commands::list_runs,
             commands::attach_run,
+            commands::runs_memory,
             commands::list_orphans,
             commands::kill_orphan,
         ])

@@ -65,6 +65,12 @@ pub fn attach_run(reg: State<Registry>, run_id: String, on_event: Channel<RunEve
     runner::attach_run(&reg, &run_id, sink);
 }
 
+/// 采集内存:app 主进程 RSS + 每条 running 命令的进程组树 RSS。
+#[tauri::command]
+pub fn runs_memory(reg: State<Registry>) -> runner::MemReport {
+    runner::runs_memory(&reg)
+}
+
 #[tauri::command]
 pub fn list_orphans() -> Vec<reconcile::Orphan> {
     reconcile::find_orphans()

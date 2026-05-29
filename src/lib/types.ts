@@ -28,6 +28,10 @@ export type RunEvent =
   | { type: 'output'; chunk: string }
   | { type: 'exit'; code: number | null }
 
+/// 内存采集:app 主进程 RSS(偏小,不含 webview helper) + 每条 running 命令的进程组树 RSS。
+export interface MemStat { runId: string; memBytes: number }
+export interface MemReport { appBytes: number; runs: MemStat[] }
+
 /// 后端仍在跑(或最近退出)的 run,用于前端 reload 后恢复。
 export interface RunInfo {
   runId: string

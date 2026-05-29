@@ -7,6 +7,7 @@ import { OrphanDialog } from './components/OrphanDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuroraBackground } from './components/ui/AuroraBackground'
 import { SettingsButton } from './components/SettingsButton'
+import { SidebarToggle } from './components/SidebarToggle'
 import { Resizer } from './components/Resizer'
 import { useStore } from './state/store'
 import { runCommand, attachRun, listRuns, listOrphans } from './lib/ipc'
@@ -39,6 +40,14 @@ export default function App() {
   }
 
   const [orphans, setOrphans] = useState<Orphan[]>([])
+  // 侧栏折叠:仅隐藏项目树(保留拖拽宽度),状态持久化;折叠后切换按钮仍在标题栏可点回。
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('quay.sidebarCollapsed') === '1')
+  const toggleSidebar = () =>
+    setCollapsed((c) => {
+      const next = !c
+      localStorage.setItem('quay.sidebarCollapsed', next ? '1' : '0')
+      return next
+    })
 
   useEffect(() => {
     // 先 load(config 就绪)再恢复 run —— upsertRun 要靠 config 按 cwd 推断 projectId。
@@ -76,9 +85,12 @@ export default function App() {
   return (
     <>
       <AuroraBackground />
-      <div className="app">
+      <div className={'app' + (collapsed ? ' sidebar-collapsed' : '')}>
         {/* 沉浸式拖拽顶栏：替代 macOS 原生标题栏，给交通灯留位 + 支持拖动窗口 */}
         <div className="titlebar" data-tauri-drag-region>
+          <div className="titlebar-left">
+            <SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} />
+          </div>
           <span className="titlebar-brand" data-tauri-drag-region>
             <span className="logo-anchor">⚓</span>
             <span className="gradient-text">Quay</span>

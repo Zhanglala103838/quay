@@ -5,8 +5,9 @@ import { testConnection } from '../lib/deepseek'
 import { BorderBeam } from './ui/BorderBeam'
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { deepseek, save } = useSettings()
+  const { deepseek, save, render, saveRender } = useSettings()
   const [form, setForm] = useState<DeepSeekSettings>(deepseek)
+  const [gpu, setGpu] = useState(render.gpuAcceleration)
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
@@ -17,6 +18,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const doSave = () => {
     save(form)
+    saveRender({ gpuAcceleration: gpu })
     onClose()
   }
 
@@ -32,7 +34,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     <div className="modal" onMouseDown={onClose}>
       <div className="modal-box settings-box" onMouseDown={(e) => e.stopPropagation()}>
         <BorderBeam duration={7} />
-        <h3>⚙️ 设置 · DeepSeek</h3>
+        <h3>⚙️ 设置</h3>
+
+        <div className="settings-section-label">DeepSeek · 智能能力</div>
         <p className="modal-sub">
           配置 DeepSeek 后，可对命令做「智能分组」与「用途解释」。Key 仅存本机 localStorage，不上传。
         </p>
@@ -87,6 +91,29 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         {result && (
           <div className={'test-result ' + (result.ok ? 'ok' : 'err')}>{result.message}</div>
         )}
+
+        <div className="settings-divider" />
+        <div className="settings-section-label">渲染</div>
+
+        <button
+          type="button"
+          className="toggle-row"
+          role="switch"
+          aria-checked={gpu}
+          onClick={() => setGpu((v) => !v)}
+        >
+          <div className="toggle-row-text">
+            <div className="toggle-row-title">GPU 渲染加速</div>
+            <div className="toggle-row-desc">
+              {gpu
+                ? '激活终端用 WebGL（GPU）渲染，大量输出更流畅'
+                : '已关闭，退回 DOM 渲染（纯 CPU，更省电/更兼容，海量输出时偏卡）'}
+            </div>
+          </div>
+          <span className={'switch' + (gpu ? ' on' : '')}>
+            <span className="switch-knob" />
+          </span>
+        </button>
 
         <div className="modal-actions">
           <button className="modal-btn accent" disabled={testing} onClick={doTest}>

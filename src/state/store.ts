@@ -140,14 +140,11 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.setItem(LAST_PROJECT_KEY, id)
     set({ activeProjectId: id, layout: loadLayout(id), currentPage: 0 })
   },
-  // 切布局:写当前项目 localStorage;currentPage 跟随聚焦格在新 capacity 下的页,保证聚焦格仍可见。
+  // 切布局:写当前项目 localStorage;默认回第一页(用户偏好,不跟随聚焦格所在页)。
   setLayout: (n) =>
     set((s) => {
       if (s.activeProjectId) localStorage.setItem(LAYOUT_KEY(s.activeProjectId), String(n))
-      const vis = visibleRuns(s.runs, s.activeProjectId)
-      const idx = s.activeRunId ? vis.findIndex((r) => r.runId === s.activeRunId) : -1
-      const currentPage = clampPage(idx >= 0 ? pageOf(idx, n) : s.currentPage, vis.length, n)
-      return { layout: n, currentPage }
+      return { layout: n, currentPage: 0 }
     }),
   setPage: (n) =>
     set((s) => {

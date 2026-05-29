@@ -1,5 +1,5 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
-import type { Config, ScanResult, Orphan, RunEvent, RunInfo } from './types'
+import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport } from './types'
 
 export const scanDir = (path: string) => invoke<ScanResult>('scan_dir', { path })
 export const getConfig = () => invoke<Config>('get_config')
@@ -8,6 +8,7 @@ export const stopCommand = (runId: string) => invoke<void>('stop_command', { run
 export const closeCommand = (runId: string) => invoke<void>('close_command', { runId })
 export const replay = (runId: string) => invoke<string>('replay', { runId })
 export const listRuns = () => invoke<RunInfo[]>('list_runs')
+export const runsMemory = () => invoke<MemReport>('runs_memory')
 export const listOrphans = () => invoke<Orphan[]>('list_orphans')
 export const killOrphan = (pgid: number) => invoke<void>('kill_orphan', { pgid })
 

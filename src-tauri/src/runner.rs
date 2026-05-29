@@ -209,6 +209,69 @@ pub fn attach_run(reg: &Registry, run_id: &str, sink: Sink) {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemStat {
+    pub run_id: String,
+    pub mem_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemReport {
+    /// Quay 主进程 RSS(不含 WKWebView helper 进程,故偏小,仅作参考)。
+    pub app_bytes: u64,
+    pub runs: Vec<MemStat>,
+}
+
+/// 采集内存:每条 running 命令 = 其进程组(pgid)整棵树的 RSS 之和
+/// (zsh + node + node 的子进程全算);app = Quay 主进程 RSS。
+/// 前端有命令在跑时 ~2s 轮询一次;无 running 不调用。
+pub fn runs_memory(reg: &Registry) -> MemReport {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+    let mut sys = System::new();
+    // 只刷内存(不拉 cmd/exe),全量进程——按 pgid 归并需要看到子进程。
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::new().with_memory(),
+    );
+
+    let app_pid = std::process::id();
+    let app_bytes = sys
+        .process(Pid::from_u32(app_pid))
+        .map(|p| p.memory())
+        .unwrap_or(0);
+
+    // 收集 running run 的 pgid(单独 lock,尽快释放)。
+    let running: Vec<(String, i32)> = {
+        let map = reg.0.lock().unwrap();
+        map.iter()
+            .filter(|(_, h)| h.exited.lock().unwrap().is_none())
+            .map(|(id, h)| (id.clone(), h.pgid))
+            .collect()
+    };
+
+    // 把每个进程的 RSS 累加到它所属的进程组。
+    let mut by_pgid: HashMap<i32, u64> = HashMap::new();
+    for (pid, proc_) in sys.processes() {
+        let pg = unsafe { libc::getpgid(pid.as_u32() as libc::pid_t) };
+        if pg > 0 {
+            *by_pgid.entry(pg).or_insert(0) += proc_.memory();
+        }
+    }
+
+    let runs = running
+        .into_iter()
+        .map(|(run_id, pgid)| MemStat {
+            run_id,
+            mem_bytes: *by_pgid.get(&pgid).unwrap_or(&0),
+        })
+        .collect();
+
+    MemReport { app_bytes, runs }
+}
+
 pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {
     reg.0
         .lock()

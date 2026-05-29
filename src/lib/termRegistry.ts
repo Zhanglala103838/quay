@@ -9,14 +9,26 @@ export const termRegistry: Record<string, Terminal> = {}
 /// 激活或拷贝前一次性回灌,避免看不见的终端持续抢占主线程解析。
 export const termBuffers: Record<string, string> = {}
 
-/// 隐藏期缓冲上限:只保留最近 256KB(够铺满激活时的可视屏 + 近期滚动)。
-/// 完整历史由后端 ring(5000 行)兜底,拷贝「全部」时仍可经 replay 取回。
+/// 隐藏期缓冲阈值:累积到 256KB 就批量刷进 xterm(而非逐块解析),平衡性能与不丢历史。
 const BUF_MAX = 262144
 
-/// 隐藏终端收到输出时调用:累加并裁剪到上限(丢最旧)。
+/// 隐藏终端收到输出时调用:累加;超阈值则把已累积输出刷进(隐藏的)xterm——
+/// 历史上限交给 xterm 的 5000 行 scrollback(\r 进度会被正确覆盖折叠、真实行保留),
+/// 不再 slice 丢最旧(那会永久丢失中段历史,且 readTerminalText 读的就是 xterm buffer)。
 export function appendBuffer(runId: string, s: string) {
   const cur = (termBuffers[runId] ?? '') + s
-  termBuffers[runId] = cur.length > BUF_MAX ? cur.slice(cur.length - BUF_MAX) : cur
+  if (cur.length > BUF_MAX) {
+    const term = termRegistry[runId]
+    if (term) {
+      term.write(cur)
+      termBuffers[runId] = ''
+      return
+    }
+    // 终端尚未挂载,无处可刷,只能退守保留最近 BUF_MAX。
+    termBuffers[runId] = cur.slice(cur.length - BUF_MAX)
+    return
+  }
+  termBuffers[runId] = cur
 }
 
 /// 把累积输出写入 xterm 并等待其解析完成,然后清空缓冲。
