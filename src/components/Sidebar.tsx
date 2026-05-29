@@ -3,7 +3,9 @@ import { Tooltip } from '@heroui/react'
 import { useStore } from '../state/store'
 import { scanDir } from '../lib/ipc'
 import type { Script } from '../lib/types'
-import { categorize, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
+import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
+import { useSettings } from '../state/settings'
+import { smartGroup, explainCommand } from '../lib/deepseek'
 import { InputModal } from './InputModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
@@ -48,12 +50,13 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
       {config.projects.map((p, i) => (
         <BlurFade key={p.id} delay={0.05 * i}>
           <div className={'project' + (p.id === activeProjectId ? ' active' : '')}>
-            <div className="project-head">
-              <span
-                className="project-name"
-                onClick={() => setActiveProject(p.id)}
-                title="设为当前项目(右侧工作区跟随)"
-              >
+            <div
+              className="project-head"
+              onClick={() => setActiveProject(p.id)}
+              title="设为当前项目(右侧工作区跟随)"
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="project-name">
                 {p.name}
                 {runningByProject(p.id) > 0 && (
                   <span className="project-running" title={`${runningByProject(p.id)} 个在跑`}>
@@ -61,7 +64,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                   </span>
                 )}
               </span>
-              <span className="project-actions">
+              <span className="project-actions" onClick={(e) => e.stopPropagation()}>
                 <Tooltip>
                   <Tooltip.Trigger>
                     <button
@@ -177,7 +180,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
   )
 }
 
-/// 单条命令行。running → 高亮 + 脉冲圆点。
+/// 单条命令行。running → 高亮 + 脉冲圆点。配置 DeepSeek 后可点 ? 让 AI 解释用途。
 function CmdRow({
   display,
   command,
@@ -189,17 +192,58 @@ function CmdRow({
   running: boolean
   onRun: () => void
 }) {
+  const configured = useSettings((s) => s.configured)
+  const [explain, setExplain] = useState<{ loading: boolean; text: string; err: boolean } | null>(
+    null,
+  )
+
+  const toggleExplain = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (explain) {
+      setExplain(null)
+      return
+    }
+    setExplain({ loading: true, text: '', err: false })
+    explainCommand(display, command)
+      .then((text) => setExplain({ loading: false, text, err: false }))
+      .catch((err) =>
+        setExplain({ loading: false, text: err instanceof Error ? err.message : String(err), err: true }),
+      )
+  }
+
   return (
-    <Tooltip>
-      <Tooltip.Trigger>
-        <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
-          <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
-          <span className="cmd-name">{display}</span>
-          {running && <span className="cmd-running-tag">运行中</span>}
+    <>
+      <Tooltip>
+        <Tooltip.Trigger>
+          <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
+            <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
+            <span className="cmd-name">{display}</span>
+            {running && <span className="cmd-running-tag">运行中</span>}
+            {configured && (
+              <button
+                className="explain-btn"
+                title="AI 解释这条命令"
+                onClick={toggleExplain}
+              >
+                {explain ? '×' : '?'}
+              </button>
+            )}
+          </div>
+        </Tooltip.Trigger>
+        <Tooltip.Content>{command}</Tooltip.Content>
+      </Tooltip>
+      {explain && (
+        <div className={'cmd-explain' + (explain.err ? ' err' : '')}>
+          {explain.loading ? (
+            <>
+              <span className="ai-spinner" /> AI 解释中…
+            </>
+          ) : (
+            explain.text
+          )}
         </div>
-      </Tooltip.Trigger>
-      <Tooltip.Content>{command}</Tooltip.Content>
-    </Tooltip>
+      )}
+    </>
   )
 }
 
@@ -259,6 +303,10 @@ function DirNode({
   const [scripts, setScripts] = useState<Script[]>([])
   const [warn, setWarn] = useState('')
   const [open, setOpen] = useState(false) // 目录默认收起
+  const configured = useSettings((s) => s.configured)
+  const [aiMode, setAiMode] = useState(false)
+  const [aiCats, setAiCats] = useState<Category[] | null>(null)
+  const [aiState, setAiState] = useState<'idle' | 'loading' | 'error'>('idle')
 
   useEffect(() => {
     let cancelled = false
@@ -280,8 +328,29 @@ function DirNode({
     }
   }, [path])
 
+  // AI 智能分组：开启后拉取并缓存；失败回退启发式
+  useEffect(() => {
+    if (!aiMode || scripts.length === 0) return
+    let cancelled = false
+    setAiState('loading')
+    smartGroup(scripts)
+      .then((cats) => {
+        if (cancelled) return
+        setAiCats(cats)
+        setAiState('idle')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAiState('error')
+        setAiMode(false) // 失败回退启发式
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [aiMode, scripts])
+
   const dirName = path.split('/').filter(Boolean).pop() || path
-  const categories = categorize(scripts)
+  const categories = aiMode && aiCats ? aiCats : categorize(scripts)
   const dirRunning = scripts.filter((s) => runningLabels.has(`${dirName}:${s.name}`)).length
 
   return (
@@ -301,6 +370,26 @@ function DirNode({
 
       {open && (
         <div className="dir-body">
+          {configured && scripts.length > 0 && (
+            <div className="dir-toolbar">
+              <button
+                className={'ai-btn' + (aiMode ? ' active' : '')}
+                disabled={aiState === 'loading'}
+                onClick={() => setAiMode((m) => !m)}
+                title="用 DeepSeek 智能重新分组命令"
+              >
+                {aiState === 'loading' ? (
+                  <>
+                    <span className="ai-spinner" /> 分组中…
+                  </>
+                ) : aiMode ? (
+                  '✨ AI 分组 · 开'
+                ) : (
+                  '✨ AI 智能分组'
+                )}
+              </button>
+            </div>
+          )}
           {warn && <div className="warn">{warn}</div>}
           {categories.map((cat) => (
             <div className="cat" key={cat.key}>

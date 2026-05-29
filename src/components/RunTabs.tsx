@@ -69,7 +69,7 @@ export function RunTabs({ writers }: { writers: Writers }) {
           className="term-pane"
           style={{ display: r.runId === effectiveActive ? 'block' : 'none' }}
         >
-          <TerminalView runId={r.runId} writers={writers} />
+          <TerminalView runId={r.runId} writers={writers} active={r.runId === effectiveActive} />
         </div>
       ))}
     </div>

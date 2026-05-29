@@ -7,8 +7,18 @@ type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
 /// 只读 xterm(一期不接 stdin)。scrollback 5000 兜住前端内存。
 /// 直接把 write 注册进 writers ref(ref 稳定),避免回调变化导致 term 重建丢输出。
-export function TerminalView({ runId, writers }: { runId: string; writers: Writers }) {
+export function TerminalView({
+  runId,
+  writers,
+  active,
+}: {
+  runId: string
+  writers: Writers
+  active: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
 
   useEffect(() => {
     const term = new Terminal({
@@ -48,6 +58,8 @@ export function TerminalView({ runId, writers }: { runId: string; writers: Write
     term.loadAddon(fit)
     term.open(ref.current!)
     fit.fit()
+    termRef.current = term
+    fitRef.current = fit
     writers.current[runId] = (s: string) => term.write(s)
 
     const ro = new ResizeObserver(() => {
@@ -62,9 +74,29 @@ export function TerminalView({ runId, writers }: { runId: string; writers: Write
     return () => {
       ro.disconnect()
       term.dispose()
+      termRef.current = null
+      fitRef.current = null
       delete writers.current[runId]
     }
   }, [runId, writers])
+
+  // display:none → block 后 xterm 不会自动重绘,直到下次写入。
+  // 切回该终端(active=true)时强制 fit + refresh,立即重画已有缓冲。
+  useEffect(() => {
+    if (!active) return
+    const term = termRef.current
+    if (!term) return
+    // 等浏览器完成显示切换后再量尺寸
+    const id = requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit()
+      } catch {
+        /* 忽略 */
+      }
+      term.refresh(0, term.rows - 1)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [active])
 
   return <div className="term" ref={ref} />
 }
