@@ -64,7 +64,10 @@ pub fn run() {
             commands::set_config,
             commands::run_command,
             commands::stop_command,
+            commands::close_command,
             commands::replay,
+            commands::list_runs,
+            commands::attach_run,
             commands::list_orphans,
             commands::kill_orphan,
         ])

@@ -27,3 +27,13 @@ export interface Orphan {
 export type RunEvent =
   | { type: 'output'; chunk: string }
   | { type: 'exit'; code: number | null }
+
+/// 后端仍在跑(或最近退出)的 run,用于前端 reload 后恢复。
+export interface RunInfo {
+  runId: string
+  label: string
+  cwd: string
+  command: string
+  status: 'running' | 'exited'
+  exitCode: number | null
+}

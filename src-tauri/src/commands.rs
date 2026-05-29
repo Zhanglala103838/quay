@@ -41,8 +41,28 @@ pub fn stop_command(reg: State<Registry>, run_id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn close_command(reg: State<Registry>, run_id: String) {
+    runner::close_run(&reg, &run_id)
+}
+
+#[tauri::command]
 pub fn replay(reg: State<Registry>, run_id: String) -> String {
     runner::replay_ring(&reg, &run_id)
+}
+
+/// 前端 reload 后:拉回后端仍在跑(及最近退出)的 run 列表。
+#[tauri::command]
+pub fn list_runs(reg: State<Registry>) -> Vec<runner::RunInfo> {
+    runner::list_runs(&reg)
+}
+
+/// 前端 reload 后:给已有 run 重新挂一个 Channel(回放历史 + 续接实时)。
+#[tauri::command]
+pub fn attach_run(reg: State<Registry>, run_id: String, on_event: Channel<RunEvent>) {
+    let sink: runner::Sink = std::sync::Arc::new(move |e: RunEvent| {
+        let _ = on_event.send(e);
+    });
+    runner::attach_run(&reg, &run_id, sink);
 }
 
 #[tauri::command]

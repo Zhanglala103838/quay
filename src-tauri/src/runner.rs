@@ -1,6 +1,7 @@
 use crate::identity;
 use crate::ledger::{self, LedgerEntry};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
@@ -14,21 +15,41 @@ pub enum RunEvent {
 }
 
 /// 输出口抽象:生产环境是 Tauri Channel,测试环境是闭包 sink。
-/// 抽象出来才能在无头测试里验证进程组/停止等 🔴 不变量。
 pub type Sink = Arc<dyn Fn(RunEvent) + Send + Sync>;
+
+/// 可重新订阅的输出口(前端 reload 后换新 Channel)。None = 当前无订阅者。
+type SinkHolder = Arc<Mutex<Option<Sink>>>;
+/// None = 运行中;Some(code) = 已退出。
+type ExitHolder = Arc<Mutex<Option<Option<i32>>>>;
 
 pub struct RunHandle {
     #[allow(dead_code)] // 保留备用(诊断/未来按 pid 操作)
     pub pid: u32,
     pub pgid: i32,
+    pub label: String,
+    pub cwd: String,
+    pub command: String,
     pub killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     // 持有 master 保持 PTY 开启;drop 即触发 reader EOF。
     pub _master: Box<dyn portable_pty::MasterPty + Send>,
     pub ring: Arc<Mutex<VecDeque<String>>>,
+    pub sink: SinkHolder,
+    pub exited: ExitHolder,
 }
 
 #[derive(Default)]
 pub struct Registry(pub Mutex<HashMap<String, RunHandle>>);
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunInfo {
+    pub run_id: String,
+    pub label: String,
+    pub cwd: String,
+    pub command: String,
+    pub status: String, // "running" | "exited"
+    pub exit_code: Option<i32>,
+}
 
 const RING_MAX: usize = 5000;
 
@@ -64,7 +85,6 @@ pub fn spawn_run(
     drop(pair.slave);
 
     let pid = child.process_id().unwrap_or(0);
-    // 取真实 pgid(PTY 下应等于 pid,但实测取一手更稳)
     let pgid = {
         let g = unsafe { libc::getpgid(pid as libc::pid_t) };
         if g > 0 {
@@ -77,10 +97,12 @@ pub fn spawn_run(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
 
     let ring = Arc::new(Mutex::new(VecDeque::<String>::new()));
-    let ring_r = ring.clone();
-    let sink_r = sink.clone();
+    let sink_holder: SinkHolder = Arc::new(Mutex::new(Some(sink)));
+    let exited: ExitHolder = Arc::new(Mutex::new(None));
 
-    // reader 线程:节流 ~30ms 合并 chunk 再推前端。
+    // reader 线程:节流 ~30ms 合并 chunk → 写 ring + 推当前订阅者。
+    let ring_r = ring.clone();
+    let holder_r = sink_holder.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         let mut acc = String::new();
@@ -91,7 +113,7 @@ pub fn spawn_run(
                 Ok(n) => {
                     acc.push_str(&String::from_utf8_lossy(&buf[..n]));
                     if last.elapsed() >= Duration::from_millis(30) || acc.len() > 4096 {
-                        flush(&sink_r, &ring_r, &mut acc);
+                        flush(&holder_r, &ring_r, &mut acc);
                         last = Instant::now();
                     }
                 }
@@ -99,17 +121,22 @@ pub fn spawn_run(
             }
         }
         if !acc.is_empty() {
-            flush(&sink_r, &ring_r, &mut acc);
+            flush(&holder_r, &ring_r, &mut acc);
         }
     });
 
-    // waiter 线程:退出后推 Exit + 清台账。
-    let sink_w = sink.clone();
+    // waiter 线程:退出后标记 exited + 推 Exit + 清台账(进程已死,非孤儿)。
+    // 单锁纪律:任意时刻只持一把锁,避免与 attach 死锁。
+    let holder_w = sink_holder.clone();
+    let exited_w = exited.clone();
     let rid = run_id.clone();
     std::thread::spawn(move || {
         let status = child.wait().ok();
         let code = status.map(|s| s.exit_code() as i32);
-        sink_w(RunEvent::Exit { code });
+        *exited_w.lock().unwrap() = Some(code);
+        if let Some(s) = &*holder_w.lock().unwrap() {
+            s(RunEvent::Exit { code });
+        }
         ledger::remove_entry(&rid);
     });
 
@@ -122,7 +149,7 @@ pub fn spawn_run(
         start_time: identity::process_snapshot(pid)
             .map(|s| s.start_time)
             .unwrap_or(0),
-        label,
+        label: label.clone(),
     });
 
     reg.0.lock().unwrap().insert(
@@ -130,15 +157,21 @@ pub fn spawn_run(
         RunHandle {
             pid,
             pgid,
+            label,
+            cwd,
+            command,
             killer,
             _master: pair.master,
             ring,
+            sink: sink_holder,
+            exited,
         },
     );
     Ok(pid)
 }
 
-fn flush(sink: &Sink, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
+/// 锁序固定:先 ring 后 sink(与 attach 一致),防死锁。
+fn flush(holder: &SinkHolder, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
     let chunk = std::mem::take(acc);
     {
         let mut r = ring.lock().unwrap();
@@ -149,7 +182,46 @@ fn flush(sink: &Sink, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
             r.pop_front();
         }
     }
-    sink(RunEvent::Output { chunk });
+    if let Some(s) = &*holder.lock().unwrap() {
+        s(RunEvent::Output { chunk });
+    }
+}
+
+/// 前端 reload 后重新订阅:回放 ring 历史 + 续接实时。锁序 ring→sink(同 flush)。
+pub fn attach_run(reg: &Registry, run_id: &str, sink: Sink) {
+    let map = reg.0.lock().unwrap();
+    if let Some(h) = map.get(run_id) {
+        let exit_snapshot = *h.exited.lock().unwrap(); // 单独 lock+release,避免与 holder 嵌套
+        let ring = h.ring.lock().unwrap(); // ring 先
+        let mut holder = h.sink.lock().unwrap(); // sink 后
+        let hist: String = ring.iter().cloned().collect();
+        if !hist.is_empty() {
+            sink(RunEvent::Output { chunk: hist });
+        }
+        if let Some(code) = exit_snapshot {
+            sink(RunEvent::Exit { code });
+        }
+        *holder = Some(sink);
+    }
+}
+
+pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {
+    reg.0
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(id, h)| {
+            let ex = *h.exited.lock().unwrap();
+            RunInfo {
+                run_id: id.clone(),
+                label: h.label.clone(),
+                cwd: h.cwd.clone(),
+                command: h.command.clone(),
+                status: if ex.is_some() { "exited" } else { "running" }.to_string(),
+                exit_code: ex.flatten(),
+            }
+        })
+        .collect()
 }
 
 /// 停止:SIGTERM 进程组(负 pgid),killer 兜底。
@@ -165,6 +237,12 @@ pub fn stop_run(reg: &Registry, run_id: &str) -> Result<(), String> {
     map.remove(run_id);
     ledger::remove_entry(run_id);
     Ok(())
+}
+
+/// 关掉某个已结束 run 的 tab(从 registry 移除,不发信号)。
+pub fn close_run(reg: &Registry, run_id: &str) {
+    reg.0.lock().unwrap().remove(run_id);
+    ledger::remove_entry(run_id);
 }
 
 pub fn replay_ring(reg: &Registry, run_id: &str) -> String {
@@ -205,7 +283,6 @@ mod tests {
         )
         .expect("spawn");
 
-        // 子进程进程组必须 ≠ 测试进程进程组(否则 kill(-pgid) 自杀)
         let my_pgid = unsafe { libc::getpgid(0) };
         let child_pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
         assert!(child_pgid > 0, "child pgid should be valid");
@@ -214,19 +291,56 @@ mod tests {
             "🔴 child MUST be in its own process group"
         );
 
-        // 等输出流出
         std::thread::sleep(Duration::from_millis(400));
         assert!(
             collected.lock().unwrap().contains("QUAY_HELLO"),
             "output should stream through sink"
         );
 
-        // stop 必须真杀死子进程
         stop_run(&reg, &run_id).unwrap();
         std::thread::sleep(Duration::from_millis(300));
         assert!(
             !crate::identity::pid_alive(pid),
             "child should be dead after stop_run"
         );
+    }
+
+    /// 重新订阅:reload 后 list_runs 看得到、attach 能回放历史。
+    #[test]
+    fn reattach_replays_history_to_new_sink() {
+        let reg = Registry::default();
+        let dummy: Sink = Arc::new(|_| {});
+        let run_id = "test_attach".to_string();
+        spawn_run(
+            &reg,
+            run_id.clone(),
+            "t".into(),
+            "/tmp".into(),
+            "echo QUAY_REPLAY; sleep 30".into(),
+            dummy,
+        )
+        .expect("spawn");
+
+        std::thread::sleep(Duration::from_millis(400));
+
+        // list_runs 应看到这个 running 的 run
+        let runs = list_runs(&reg);
+        assert!(runs.iter().any(|r| r.run_id == run_id && r.status == "running"));
+
+        // 模拟前端 reload:换一个新 sink attach,应收到历史回放
+        let got = Arc::new(Mutex::new(String::new()));
+        let g2 = got.clone();
+        let new_sink: Sink = Arc::new(move |e: RunEvent| {
+            if let RunEvent::Output { chunk } = e {
+                g2.lock().unwrap().push_str(&chunk);
+            }
+        });
+        attach_run(&reg, &run_id, new_sink);
+        assert!(
+            got.lock().unwrap().contains("QUAY_REPLAY"),
+            "attach should replay ring history to the new sink"
+        );
+
+        stop_run(&reg, &run_id).unwrap();
     }
 }
