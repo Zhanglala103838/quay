@@ -9,6 +9,38 @@
 /* 暗色模式：html.dark 已在 index.html 设置；告诉 Tailwind dark: 跟随 class */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── 可选终端/界面字体(本地离线 woff2) ──
+   英文:Maple Mono(Regular/Bold,纯拉丁)；中文:Sarasa Mono SC、霞鹜文楷(子集,仅 CJK+标点)。
+   JetBrains/Bricolage 走 @fontsource(main.tsx)。 */
+@font-face {
+  font-family: 'Maple Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/maple-mono.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Maple Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/maple-mono-bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Sarasa Mono SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/sarasa-mono-sc.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'LXGW WenKai Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/lxgw-wenkai-mono.woff2') format('woff2');
+}
+
 /* ── 设计 token ── */
 @theme {
   --font-display: 'Bricolage Grotesque Variable', -apple-system, sans-serif;

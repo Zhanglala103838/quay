@@ -10,6 +10,8 @@ export const closeCommand = (runId: string) => invoke<void>('close_command', { r
 export const resizeRun = (runId: string, cols: number, rows: number) =>
   invoke<void>('resize_run', { runId, cols, rows })
 export const replay = (runId: string) => invoke<string>('replay', { runId })
+/// 打开 WebView 开发者工具(右键菜单「检查元素」)。需后端 devtools 能力(debug 天然有 / release 开 feature)。
+export const openDevtools = () => invoke<void>('open_devtools')
 export const listRuns = () => invoke<RunInfo[]>('list_runs')
 export const runsMemory = () => invoke<MemReport>('runs_memory')
 export const listOrphans = () => invoke<Orphan[]>('list_orphans')

@@ -21,7 +21,8 @@ tauri-build = { version = "2.6.2", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.2", features = ["tray-icon"] }
+# devtools feature:release 构建也允许 window.open_devtools()(右键「检查元素」)。debug 构建天然带。
+tauri = { version = "2.11.2", features = ["tray-icon", "devtools"] }
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"

@@ -7,6 +7,7 @@ import { termRegistry, appendBuffer, flushBuffer } from '../lib/termRegistry'
 import { useSettings } from '../state/settings'
 import { useStore } from '../state/store'
 import { probeGpuRenderer } from '../lib/gpuProbe'
+import { termStack, ensureFontsLoaded } from '../lib/fonts'
 
 type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
@@ -37,6 +38,10 @@ export function TerminalView({
   const webglRef = useRef<WebglAddon | null>(null)
   // GPU 渲染加速开关(设置项)。关闭则不挂 WebGL,退回 xterm 默认 DOM 渲染器。
   const gpuAccel = useSettings((s) => s.render.gpuAcceleration)
+  // 终端字体设置(实时切换:变化时只更新 xterm options + 重排,不重建终端)。
+  const termLatin = useSettings((s) => s.render.termLatin)
+  const termCJK = useSettings((s) => s.render.termCJK)
+  const termFontSize = useSettings((s) => s.render.termFontSize)
   // 分屏布局(1/2/4)。切布局会改格子宽度,但对「保持可见」的格 active 不变 → 下面
   // active effect 不重跑、只能靠 ResizeObserver,而布局瞬变时 RO 可能漏触发,列宽就卡在旧值。
   // 故订阅 layout,变化时显式补 fit(见底部 layout effect)。
@@ -120,13 +125,14 @@ export function TerminalView({
   }
 
   useEffect(() => {
+    // 初值取设置快照(非响应式,避免进 effect 依赖触发重建);后续变化由下方字体 effect 实时套用。
+    const r0 = useSettings.getState().render
     const term = new Terminal({
       scrollback: 5000,
-      fontSize: 13,
-      // 英文 JetBrains Mono(与 Ghostty 默认同款),中文回退 PingFang SC 苹方(Ghostty 在 macOS
-      // 的 CJK 回退也是苹方)。字体名须与 @fontsource-variable 实际注册的家族名一致(见 index.css
-      // --font-mono),否则始终回退 Menlo;字体加载完字符宽度会变,挂载后会再补一次 fit。
-      fontFamily: "'JetBrains Mono Variable', 'PingFang SC', Menlo, Monaco, 'Courier New', monospace",
+      fontSize: r0.termFontSize,
+      // 英文字体定 metrics + 中文 fallback,见 lib/fonts.ts。字体名须与 @fontsource / @font-face
+      // 注册的家族名一致,否则回退 Menlo;字体加载完字符宽度会变,挂载后 fonts.ready 再补一次 fit。
+      fontFamily: termStack(r0.termLatin, r0.termCJK),
       letterSpacing: 0,
       lineHeight: 1.25,
       convertEol: true,
@@ -206,6 +212,22 @@ export function TerminalView({
       delete writers.current[runId]
     }
   }, [runId, writers])
+
+  // 字体设置变化:实时套用到已存在的终端(不重建),预加载字体就绪后改 options + 重排 + 重绘。
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    const stack = termStack(termLatin, termCJK)
+    ensureFontsLoaded(stack, termFontSize).then(() => {
+      if (termRef.current !== term) return // 期间已卸载
+      term.options.fontFamily = stack
+      term.options.fontSize = termFontSize
+      fitAndSync.current()
+      // WebGL 渲染器缓存了字形纹理图集,换字体后需清掉才会用新字形重绘。
+      webglRef.current?.clearTextureAtlas?.()
+      term.refresh(0, term.rows - 1)
+    })
+  }, [termLatin, termCJK, termFontSize])
 
   // 激活/切走/切 GPU 开关:
   //   激活 + GPU 开 → 挂 WebGL(若可用)+ 回灌隐藏期缓冲 + fit + refresh,立即重画。

@@ -168,6 +168,7 @@ pub fn run() {
             commands::close_command,
             commands::resize_run,
             commands::replay,
+            commands::open_devtools,
             commands::list_runs,
             commands::attach_run,
             commands::runs_memory,

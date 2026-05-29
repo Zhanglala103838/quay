@@ -56,6 +56,14 @@ pub fn replay(reg: State<Registry>, run_id: String) -> String {
     runner::replay_ring(&reg, &run_id)
 }
 
+/// 打开 WebView 开发者工具(右键菜单「检查元素」调用)。
+/// `open_devtools()` 方法由 tauri 的 `devtools` feature 门控,已在 Cargo.toml 开启,
+/// 故 debug/release 均可用 —— 无条件调用即可。
+#[tauri::command]
+pub fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 /// 前端 reload 后:拉回后端仍在跑(及最近退出)的 run 列表。
 #[tauri::command]
 pub fn list_runs(reg: State<Registry>) -> Vec<runner::RunInfo> {

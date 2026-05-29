@@ -13,6 +13,18 @@ export interface DeepSeekSettings {
 /// 关闭则退回 xterm 默认 DOM 渲染器(纯 CPU,低功耗/兼容但大量输出时更卡)。默认开。
 export interface RenderSettings {
   gpuAcceleration: boolean
+  /** 终端字体(见 lib/fonts.ts 注册表 key) */
+  termLatin: string
+  termCJK: string
+  termFontSize: number
+  /** 界面(非终端)字体 */
+  uiLatin: string
+  uiCJK: string
+}
+
+/// 调试设置:开启后右键菜单追加「检查元素」(调 Rust open_devtools)。默认关,避免普通用户误触。
+export interface DebugSettings {
+  enabled: boolean
 }
 
 const LS_KEY = 'quay.deepseek'
@@ -25,6 +37,16 @@ const DEFAULTS: DeepSeekSettings = {
 const RENDER_LS_KEY = 'quay.render'
 const RENDER_DEFAULTS: RenderSettings = {
   gpuAcceleration: true,
+  termLatin: 'jetbrains',
+  termCJK: 'pingfang',
+  termFontSize: 13,
+  uiLatin: 'jetbrains',
+  uiCJK: 'pingfang',
+}
+
+const DEBUG_LS_KEY = 'quay.debug'
+const DEBUG_DEFAULTS: DebugSettings = {
+  enabled: false,
 }
 
 function load(): DeepSeekSettings {
@@ -47,6 +69,16 @@ function loadRender(): RenderSettings {
   return RENDER_DEFAULTS
 }
 
+function loadDebug(): DebugSettings {
+  try {
+    const raw = localStorage.getItem(DEBUG_LS_KEY)
+    if (raw) return { ...DEBUG_DEFAULTS, ...JSON.parse(raw) }
+  } catch {
+    /* ignore */
+  }
+  return DEBUG_DEFAULTS
+}
+
 interface SettingsStore {
   deepseek: DeepSeekSettings
   /** key 已配置 → AI 能力可用 */
@@ -54,6 +86,8 @@ interface SettingsStore {
   save: (s: Partial<DeepSeekSettings>) => void
   render: RenderSettings
   saveRender: (s: Partial<RenderSettings>) => void
+  debug: DebugSettings
+  saveDebug: (s: Partial<DebugSettings>) => void
 }
 
 export const useSettings = create<SettingsStore>((set, get) => {
@@ -71,6 +105,12 @@ export const useSettings = create<SettingsStore>((set, get) => {
       const render = { ...get().render, ...patch }
       localStorage.setItem(RENDER_LS_KEY, JSON.stringify(render))
       set({ render })
+    },
+    debug: loadDebug(),
+    saveDebug: (patch) => {
+      const debug = { ...get().debug, ...patch }
+      localStorage.setItem(DEBUG_LS_KEY, JSON.stringify(debug))
+      set({ debug })
     },
   }
 })

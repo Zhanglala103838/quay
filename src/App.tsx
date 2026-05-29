@@ -8,8 +8,11 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuroraBackground } from './components/ui/AuroraBackground'
 import { SettingsButton } from './components/SettingsButton'
 import { SidebarToggle } from './components/SidebarToggle'
+import { ContextMenu } from './components/ContextMenu'
 import { listen } from '@tauri-apps/api/event'
 import { useStore } from './state/store'
+import { useSettings } from './state/settings'
+import { applyUiFontVars } from './lib/fonts'
 import { runCommand, attachRun, listRuns, listOrphans } from './lib/ipc'
 import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
@@ -47,6 +50,13 @@ export default function App() {
       }
     }
   }
+
+  // 界面(非终端)字体:把选择写进 CSS 变量(--font-mono / --font-display),挂载即套用持久值。
+  const uiLatin = useSettings((s) => s.render.uiLatin)
+  const uiCJK = useSettings((s) => s.render.uiCJK)
+  useEffect(() => {
+    applyUiFontVars(uiLatin, uiCJK)
+  }, [uiLatin, uiCJK])
 
   const [orphans, setOrphans] = useState<Orphan[]>([])
   // 侧栏折叠:仅隐藏项目树(保留拖拽宽度),状态持久化;折叠后切换按钮仍在标题栏可点回。
@@ -128,6 +138,7 @@ export default function App() {
         <OrphanDialog orphans={orphans} onClose={() => setOrphans([])} />
         <ConfirmDialog />
       </div>
+      <ContextMenu />
     </>
   )
 }
