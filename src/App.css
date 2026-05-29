@@ -352,6 +352,20 @@
   color: var(--text);
   border-color: var(--glass-border-hi);
 }
+/* 次要但明显的操作(如"测试连接"):实边框 + 亮字,hover 转 accent */
+.modal-btn.accent {
+  border-color: var(--glass-border-hi);
+  color: var(--text-bright);
+}
+.modal-btn.accent:hover {
+  border-color: rgba(56, 232, 255, 0.4);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* 统一删除按钮:幽灵态 ✕,hover 变红,呼应 pill-btn.danger 视觉 */
 .delete-btn {
