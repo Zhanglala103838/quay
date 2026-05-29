@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Tooltip } from '@heroui/react'
 import { useStore } from '../state/store'
 import { scanDir } from '../lib/ipc'
-import type { Project, Script } from '../lib/types'
+import type { Script } from '../lib/types'
+import { categorize, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { InputModal } from './InputModal'
+import { ShimmerButton } from './ui/ShimmerButton'
+import { BlurFade } from './ui/BlurFade'
 
 interface RunFn {
   (label: string, cwd: string, command: string): void
@@ -15,31 +19,102 @@ type Pending =
   | null
 
 export function Sidebar({ onRun }: { onRun: RunFn }) {
-  const { config, addProject, addDirectory, addManualCommand, removeProject } = useStore()
+  const { config, addProject, addDirectory, addManualCommand, removeProject, setActiveProject } =
+    useStore()
+  // runs 引用稳定，组件体内派生 running label 集合（zustand v5）
+  const runs = useStore((s) => s.runs)
+  const activeProjectId = useStore((s) => s.activeProjectId)
+  const runningLabels = new Set(runs.filter((r) => r.status === 'running').map((r) => r.label))
+  // 每个项目当前在跑数(按 projectId 归属)
+  const runningByProject = (pid: string) =>
+    runs.filter((r) => r.projectId === pid && r.status === 'running').length
   const [pending, setPending] = useState<Pending>(null)
 
   return (
     <div className="sidebar">
       <div className="sidebar-head">
-        <span className="logo">⚓ Quay</span>
-        <button className="add-btn" onClick={() => setPending({ kind: 'project' })}>
-          + 项目
-        </button>
+        <span className="sidebar-title">项目</span>
+        <ShimmerButton onClick={() => setPending({ kind: 'project' })}>+ 项目</ShimmerButton>
       </div>
 
       {config.projects.length === 0 && (
-        <div className="empty-hint">还没有项目。点「+ 项目」开始,再给项目绑定目录或手动命令。</div>
+        <BlurFade delay={0.1}>
+          <div className="empty-hint">
+            还没有项目。点「+ 项目」开始,再给项目绑定目录或手动命令。
+          </div>
+        </BlurFade>
       )}
 
-      {config.projects.map((p) => (
-        <ProjectNode
-          key={p.id}
-          project={p}
-          onRun={onRun}
-          onAddDir={() => setPending({ kind: 'dir', projectId: p.id })}
-          onAddManual={() => setPending({ kind: 'manual', projectId: p.id })}
-          onRemove={() => removeProject(p.id)}
-        />
+      {config.projects.map((p, i) => (
+        <BlurFade key={p.id} delay={0.05 * i}>
+          <div className={'project' + (p.id === activeProjectId ? ' active' : '')}>
+            <div className="project-head">
+              <span
+                className="project-name"
+                onClick={() => setActiveProject(p.id)}
+                title="设为当前项目(右侧工作区跟随)"
+              >
+                {p.name}
+                {runningByProject(p.id) > 0 && (
+                  <span className="project-running" title={`${runningByProject(p.id)} 个在跑`}>
+                    {runningByProject(p.id)}
+                  </span>
+                )}
+              </span>
+              <span className="project-actions">
+                <Tooltip>
+                  <Tooltip.Trigger>
+                    <button
+                      className="pill-btn"
+                      onClick={() => setPending({ kind: 'dir', projectId: p.id })}
+                    >
+                      +目录
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>绑定含 package.json 的目录</Tooltip.Content>
+                </Tooltip>
+                <Tooltip>
+                  <Tooltip.Trigger>
+                    <button
+                      className="pill-btn"
+                      onClick={() => setPending({ kind: 'manual', projectId: p.id })}
+                    >
+                      +命令
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>新增手动命令</Tooltip.Content>
+                </Tooltip>
+                <Tooltip>
+                  <Tooltip.Trigger>
+                    <button className="pill-btn danger" onClick={() => removeProject(p.id)}>
+                      ✕
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>移除项目</Tooltip.Content>
+                </Tooltip>
+              </span>
+            </div>
+
+            {p.directories.map((d) => (
+              <DirNode key={d.id} path={d.path} onRun={onRun} runningLabels={runningLabels} />
+            ))}
+
+            {p.manualCommands.length > 0 && (
+              <div className="cat">
+                <div className="cat-label">手动</div>
+                {p.manualCommands.map((m) => (
+                  <CmdRow
+                    key={m.id}
+                    display={m.label}
+                    command={`${m.command} · ${m.cwd}`}
+                    running={runningLabels.has(m.label)}
+                    onRun={() => onRun(m.label, m.cwd, m.command)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </BlurFade>
       ))}
 
       {pending?.kind === 'project' && (
@@ -94,57 +169,88 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
   )
 }
 
-function ProjectNode({
-  project: p,
+/// 单条命令行。running → 高亮 + 脉冲圆点。
+function CmdRow({
+  display,
+  command,
+  running,
   onRun,
-  onAddDir,
-  onAddManual,
-  onRemove,
 }: {
-  project: Project
-  onRun: RunFn
-  onAddDir: () => void
-  onAddManual: () => void
-  onRemove: () => void
+  display: string
+  command: string
+  running: boolean
+  onRun: () => void
 }) {
-  const [open, setOpen] = useState(true)
+  return (
+    <Tooltip>
+      <Tooltip.Trigger>
+        <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
+          <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
+          <span className="cmd-name">{display}</span>
+          {running && <span className="cmd-running-tag">运行中</span>}
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content>{command}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+/// 前缀子分组（如 deploy:* / db:*）：可折叠，默认收起，标头带计数 + 活动指示。
+function PrefixGroupNode({
+  group,
+  dirName,
+  path,
+  onRun,
+  runningLabels,
+}: {
+  group: PrefixGroup
+  dirName: string
+  path: string
+  onRun: RunFn
+  runningLabels: Set<string>
+}) {
+  const [open, setOpen] = useState(false)
+  const runningCount = group.items.filter((it) =>
+    runningLabels.has(`${dirName}:${it.name}`),
+  ).length
 
   return (
-    <div className="project">
-      <div className="project-head">
-        <span className="project-name" onClick={() => setOpen((o) => !o)}>
-          <span className="caret">{open ? '▾' : '▸'}</span> {p.name}
-        </span>
-        <span className="project-actions">
-          <button onClick={onAddDir}>+目录</button>
-          <button onClick={onAddManual}>+命令</button>
-          <button className="danger" onClick={onRemove}>
-            ✕
-          </button>
-        </span>
+    <div className="pgroup">
+      <div className="pgroup-head" onClick={() => setOpen((o) => !o)}>
+        <span className="chevron">{open ? '▾' : '▸'}</span>
+        <span className="pgroup-name">{group.prefix}</span>
+        <span className="pgroup-count">{group.items.length}</span>
+        {runningCount > 0 && <span className="activity-dot" title={`${runningCount} 个在跑`} />}
       </div>
-
       {open && (
-        <>
-          {p.directories.map((d) => (
-            <DirNode key={d.id} path={d.path} onRun={onRun} />
+        <div className="pgroup-body">
+          {group.items.map((it) => (
+            <CmdRow
+              key={it.name}
+              display={it.name === group.prefix ? it.name : it.name.slice(group.prefix.length + 1)}
+              command={it.command}
+              running={runningLabels.has(`${dirName}:${it.name}`)}
+              onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+            />
           ))}
-          {p.manualCommands.map((m) => (
-            <div key={m.id} className="cmd manual" onClick={() => onRun(m.label, m.cwd, m.command)}>
-              <span className="run-icon">▶</span> {m.label}
-              <span className="cmd-hint">{m.command}</span>
-            </div>
-          ))}
-        </>
+        </div>
       )}
     </div>
   )
 }
 
-function DirNode({ path, onRun }: { path: string; onRun: RunFn }) {
+function DirNode({
+  path,
+  onRun,
+  runningLabels,
+}: {
+  path: string
+  onRun: RunFn
+  runningLabels: Set<string>
+}) {
   const [scripts, setScripts] = useState<Script[]>([])
   const [warn, setWarn] = useState('')
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false) // 目录默认收起
 
   useEffect(() => {
     let cancelled = false
@@ -167,26 +273,52 @@ function DirNode({ path, onRun }: { path: string; onRun: RunFn }) {
   }, [path])
 
   const dirName = path.split('/').filter(Boolean).pop() || path
+  const categories = categorize(scripts)
+  const dirRunning = scripts.filter((s) => runningLabels.has(`${dirName}:${s.name}`)).length
 
   return (
     <div className="dir">
-      <div className="dir-path" title={path} onClick={() => setOpen((o) => !o)}>
-        <span className="caret">{open ? '▾' : '▸'}</span> 📁 {dirName}
-      </div>
+      <Tooltip>
+        <Tooltip.Trigger>
+          <div className="dir-path" onClick={() => setOpen((o) => !o)}>
+            <span className="chevron">{open ? '▾' : '▸'}</span>
+            <span className="dir-icon">📁</span>
+            <span className="dir-name">{dirName}</span>
+            {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
+            {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
+          </div>
+        </Tooltip.Trigger>
+        <Tooltip.Content>{path}</Tooltip.Content>
+      </Tooltip>
+
       {open && (
-        <>
+        <div className="dir-body">
           {warn && <div className="warn">{warn}</div>}
-          {scripts.map((s) => (
-            <div
-              key={s.name}
-              className="cmd"
-              onClick={() => onRun(`${dirName}:${s.name}`, path, `npm run ${s.name}`)}
-              title={s.command}
-            >
-              <span className="run-icon">▶</span> {s.name}
+          {categories.map((cat) => (
+            <div className="cat" key={cat.key}>
+              <div className="cat-label">{cat.label}</div>
+              {cat.groups.map((g) => (
+                <PrefixGroupNode
+                  key={g.prefix}
+                  group={g}
+                  dirName={dirName}
+                  path={path}
+                  onRun={onRun}
+                  runningLabels={runningLabels}
+                />
+              ))}
+              {cat.loose.map((it: CmdLeaf) => (
+                <CmdRow
+                  key={it.name}
+                  display={it.name}
+                  command={it.command}
+                  running={runningLabels.has(`${dirName}:${it.name}`)}
+                  onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+                />
+              ))}
             </div>
           ))}
-        </>
+        </div>
       )}
     </div>
   )

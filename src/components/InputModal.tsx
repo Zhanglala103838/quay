@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Button } from '@heroui/react'
+import { BorderBeam } from './ui/BorderBeam'
 
 export interface Field {
   key: string
@@ -34,9 +37,12 @@ export function InputModal({
     onSubmit(values)
   }
 
-  return (
+  // 必须 portal 到 body：祖先(.sidebar)的 backdrop-filter 会成为 fixed 定位的包含块，
+  // 否则弹窗被困在侧栏内而非全屏居中。
+  return createPortal(
     <div className="modal" onMouseDown={onCancel}>
       <div className="modal-box" onMouseDown={(e) => e.stopPropagation()}>
+        <BorderBeam duration={7} />
         <h3>{title}</h3>
         {fields.map((f, i) => (
           <div key={f.key} className="field">
@@ -54,12 +60,15 @@ export function InputModal({
           </div>
         ))}
         <div className="modal-actions">
-          <button className="primary" onClick={submit}>
+          <Button variant="primary" onPress={submit}>
             确定
-          </button>
-          <button onClick={onCancel}>取消</button>
+          </Button>
+          <Button variant="outline" onPress={onCancel}>
+            取消
+          </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

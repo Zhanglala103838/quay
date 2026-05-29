@@ -14,12 +14,14 @@
       {
         "label": "main",
         "title": "Quay",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 800,
-        "minHeight": 500,
+        "width": 1200,
+        "height": 800,
+        "minWidth": 860,
+        "minHeight": 540,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

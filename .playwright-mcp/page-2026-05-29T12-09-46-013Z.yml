@@ -1,0 +1,18 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: ⚓
+    - generic [ref=e7]: Quay
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 项目
+        - button "+ 项目" [ref=e12] [cursor=pointer]:
+          - generic [ref=e14]: + 项目
+      - generic [ref=e16]: 还没有项目。点「+ 项目」开始,再给项目绑定目录或手动命令。
+    - generic [ref=e18]:
+      - generic [ref=e19]: ⚓
+      - generic [ref=e20]: 点左侧任一命令开始运行 ▶
+  - generic [ref=e21]:
+    - generic [ref=e23]: 全局
+    - generic [ref=e24]: "0"
+    - generic [ref=e25]: 个在跑

@@ -5,6 +5,12 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  '@fontsource-variable/bricolage-grotesque':
+    specifier: ^5.2.10
+    version: 5.2.10
+  '@fontsource-variable/jetbrains-mono':
+    specifier: ^5.2.8
+    version: 5.2.8
   '@heroui/react':
     specifier: ^3.1.0
     version: 3.1.0(@react-spectrum/provider@3.11.1)(@types/react-dom@19.2.3)(@types/react@19.2.15)(react-dom@19.2.6)(react@19.2.6)(tailwindcss@4.3.0)
@@ -378,6 +384,14 @@ packages:
       '@eslint/core': 1.2.1
       levn: 0.4.1
     dev: true
+
+  /@fontsource-variable/bricolage-grotesque@5.2.10:
+    resolution: {integrity: sha512-5EDsCqgGpKVcJWE4sg9ydli+t5WM97mISYw5lla/Ev4z71FwXh1oN0YUU8xjkRW9+wBCGD9R+ntAvI8G4bUFJg==}
+    dev: false
+
+  /@fontsource-variable/jetbrains-mono@5.2.8:
+    resolution: {integrity: sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q==}
+    dev: false
 
   /@formatjs/ecma402-abstract@2.3.6:
     resolution: {integrity: sha512-HJnTFeRM2kVFVr5gr5kH1XP6K0JcJtE7Lzvtr3FS/so5f1kpsqqqxy5JF+FRaO6H2qmcMfAUIox7AJteieRtVw==}
