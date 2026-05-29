@@ -17,6 +17,9 @@ dependencies:
   '@tauri-apps/api':
     specifier: ^2
     version: 2.11.0
+  '@tauri-apps/plugin-notification':
+    specifier: ^2.3.3
+    version: 2.3.3
   '@xterm/addon-fit':
     specifier: ^0.11.0
     version: 0.11.0
@@ -1306,6 +1309,12 @@ packages:
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.2
       '@tauri-apps/cli-win32-x64-msvc': 2.11.2
     dev: true
+
+  /@tauri-apps/plugin-notification@2.3.3:
+    resolution: {integrity: sha512-Zw+ZH18RJb41G4NrfHgIuofJiymusqN+q8fGUIIV7vyCH+5sSn5coqRv/MWB9qETsUs97vmU045q7OyseCV3Qg==}
+    dependencies:
+      '@tauri-apps/api': 2.11.0
+    dev: false
 
   /@tybys/wasm-util@0.10.2:
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}

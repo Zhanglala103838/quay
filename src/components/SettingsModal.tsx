@@ -88,6 +88,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           />
         </div>
 
+        {/* 测试连接归属 DeepSeek 配置块:验证当前 key/model/baseUrl 是否可用 */}
+        <div className="settings-test-row">
+          <button className="modal-btn accent" disabled={testing} onClick={doTest}>
+            {testing ? '测试中…' : '测试连接'}
+          </button>
+        </div>
         {result && (
           <div className={'test-result ' + (result.ok ? 'ok' : 'err')}>{result.message}</div>
         )}
@@ -116,10 +122,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </button>
 
         <div className="modal-actions">
-          <button className="modal-btn accent" disabled={testing} onClick={doTest}>
-            {testing ? '测试中…' : '测试连接'}
-          </button>
-          <span style={{ flex: 1 }} />
           <button className="modal-btn primary" onClick={doSave}>
             保存
           </button>

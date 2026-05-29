@@ -1052,6 +1052,32 @@
   padding: 10px 14px 12px 14px;
 }
 
+/* 终端滚动条:对齐 app 玻璃蓝设计。xterm 的 .xterm-viewport 默认 overflow-y:scroll,
+   已恒占一条 lane(即「专门区域」);这里把它做成可见的内陷胶囊轨道 + 干净滑块。
+   覆盖 index.css 全局细滚动条。注:不再用 scrollbar-gutter(WKWebView 支持不稳)。 */
+.term .xterm-viewport::-webkit-scrollbar {
+  width: 14px;
+}
+/* 轨道 = 可见的专门区域:极淡内陷胶囊(透明边 + clip 让其在 lane 内收窄居中) */
+.term .xterm-viewport::-webkit-scrollbar-track {
+  background: rgba(120, 180, 220, 0.06);
+  border-radius: 99px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+/* 滑块:玻璃蓝胶囊,同样收窄居中(14px lane 内约 6px),hover 走 accent */
+.term .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(120, 180, 220, 0.3);
+  border-radius: 99px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  min-height: 32px;
+}
+.term .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 232, 255, 0.55);
+  background-clip: padding-box;
+}
+
 /* ───────────── 运行状态栏 ───────────── */
 .runningbar {
   flex-shrink: 0;
@@ -1296,12 +1322,17 @@
 .settings-box {
   width: 480px;
 }
+/* 测试连接按钮:置于 DeepSeek 配置块内(Base URL 下方),左对齐 */
+.settings-test-row {
+  display: flex;
+  margin-top: 10px;
+}
 .test-result {
   font-size: 12px;
   line-height: 1.5;
   padding: 9px 12px;
   border-radius: 9px;
-  margin-top: 4px;
+  margin-top: 8px;
   word-break: break-all;
 }
 .test-result.ok {
@@ -1329,6 +1360,12 @@
   height: 1px;
   background: var(--glass-border);
   margin: 18px 0 16px;
+}
+
+/* 设置弹窗:DeepSeek 块内的「测试连接」行 */
+.settings-test-row {
+  display: flex;
+  margin-top: 2px;
 }
 
 /* 设置弹窗:开关行(整行可点) */

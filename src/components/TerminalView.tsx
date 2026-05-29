@@ -5,6 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { termRegistry, appendBuffer, flushBuffer } from '../lib/termRegistry'
 import { useSettings } from '../state/settings'
+import { probeGpuRenderer } from '../lib/gpuProbe'
 
 type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
@@ -132,18 +133,20 @@ export function TerminalView({
     }
 
     if (gpuAccel) {
-      // 仅激活终端挂 WebGL;失败(WKWebView 无 WebGL2 等)静默退回 DOM 渲染器。
+      // 仅激活终端挂 WebGL;失败(WKWebView 无 WebGL2 等)退回 DOM 渲染器并告警(不再静默)。
       if (!webglRef.current) {
         try {
           const addon = new WebglAddon()
           addon.onContextLoss(() => {
+            console.warn('[quay/gpu] WebGL 上下文丢失,本终端退回 DOM 渲染器')
             addon.dispose()
             webglRef.current = null
           })
           term.loadAddon(addon)
           webglRef.current = addon
-        } catch {
-          /* WebGL 不可用,退回默认 DOM 渲染 */
+          probeGpuRenderer() // 首次挂载时确认 GPU 真生效(全进程只探一次)
+        } catch (e) {
+          console.warn('[quay/gpu] WebGL addon 加载失败,退回 DOM 渲染器:', e)
         }
       }
     } else {
