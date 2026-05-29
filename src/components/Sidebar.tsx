@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Tooltip } from '@heroui/react'
 import { useStore } from '../state/store'
 import { scanDir } from '../lib/ipc'
 import type { Script } from '../lib/types'
@@ -65,36 +64,27 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 )}
               </span>
               <span className="project-actions" onClick={(e) => e.stopPropagation()}>
-                <Tooltip>
-                  <Tooltip.Trigger>
-                    <button
-                      className="pill-btn"
-                      onClick={() => setPending({ kind: 'dir', projectId: p.id })}
-                    >
-                      +目录
-                    </button>
-                  </Tooltip.Trigger>
-                  <Tooltip.Content>绑定含 package.json 的目录</Tooltip.Content>
-                </Tooltip>
-                <Tooltip>
-                  <Tooltip.Trigger>
-                    <button
-                      className="pill-btn"
-                      onClick={() => setPending({ kind: 'manual', projectId: p.id })}
-                    >
-                      +命令
-                    </button>
-                  </Tooltip.Trigger>
-                  <Tooltip.Content>新增手动命令</Tooltip.Content>
-                </Tooltip>
-                <Tooltip>
-                  <Tooltip.Trigger>
-                    <button className="pill-btn danger" onClick={() => removeProject(p.id)}>
-                      ✕
-                    </button>
-                  </Tooltip.Trigger>
-                  <Tooltip.Content>移除项目</Tooltip.Content>
-                </Tooltip>
+                <button
+                  className="pill-btn"
+                  title="绑定含 package.json 的目录"
+                  onClick={() => setPending({ kind: 'dir', projectId: p.id })}
+                >
+                  +目录
+                </button>
+                <button
+                  className="pill-btn"
+                  title="新增手动命令"
+                  onClick={() => setPending({ kind: 'manual', projectId: p.id })}
+                >
+                  +命令
+                </button>
+                <button
+                  className="pill-btn danger"
+                  title="移除项目"
+                  onClick={() => removeProject(p.id)}
+                >
+                  ✕
+                </button>
               </span>
             </div>
 
@@ -164,7 +154,8 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 .find((p) => p.id === pending.projectId)
                 ?.directories.map((d) => d.path),
             },
-            { key: 'label', label: '标签(可选)', placeholder: '不填则用命令本身' },
+            // 标签默认跟随命令自动填充(可改),让用户一眼知道这条是什么
+            { key: 'label', label: '标签', placeholder: '默认跟随命令', mirrorOf: 'command' },
           ]}
           onSubmit={(v) => {
             const cmd = v.command.trim()
@@ -213,25 +204,17 @@ function CmdRow({
 
   return (
     <>
-      <Tooltip>
-        <Tooltip.Trigger>
-          <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
-            <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
-            <span className="cmd-name">{display}</span>
-            {running && <span className="cmd-running-tag">运行中</span>}
-            {configured && (
-              <button
-                className="explain-btn"
-                title="AI 解释这条命令"
-                onClick={toggleExplain}
-              >
-                {explain ? '×' : '?'}
-              </button>
-            )}
-          </div>
-        </Tooltip.Trigger>
-        <Tooltip.Content>{command}</Tooltip.Content>
-      </Tooltip>
+      {/* 原生 title 代替 HeroUI Tooltip —— 避免 overlay 拦截滚动/点击 */}
+      <div className={'cmd' + (running ? ' running' : '')} onClick={onRun} title={command}>
+        <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
+        <span className="cmd-name">{display}</span>
+        {running && <span className="cmd-running-tag">运行中</span>}
+        {configured && (
+          <button className="explain-btn" title="AI 解释这条命令" onClick={toggleExplain}>
+            {explain ? '×' : '?'}
+          </button>
+        )}
+      </div>
       {explain && (
         <div className={'cmd-explain' + (explain.err ? ' err' : '')}>
           {explain.loading ? (
@@ -355,18 +338,14 @@ function DirNode({
 
   return (
     <div className="dir">
-      <Tooltip>
-        <Tooltip.Trigger>
-          <div className="dir-path" onClick={() => setOpen((o) => !o)}>
-            <span className="chevron">{open ? '▾' : '▸'}</span>
-            <span className="dir-icon">📁</span>
-            <span className="dir-name">{dirName}</span>
-            {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
-            {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
-          </div>
-        </Tooltip.Trigger>
-        <Tooltip.Content>{path}</Tooltip.Content>
-      </Tooltip>
+      {/* 用原生 title,不用 HeroUI Tooltip —— 后者的 overlay 会拦截列表区的点击和滚动 */}
+      <div className="dir-path" title={path} onClick={() => setOpen((o) => !o)}>
+        <span className="chevron">{open ? '▾' : '▸'}</span>
+        <span className="dir-icon">📁</span>
+        <span className="dir-name">{dirName}</span>
+        {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
+        {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
+      </div>
 
       {open && (
         <div className="dir-body">
