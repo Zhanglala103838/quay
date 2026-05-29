@@ -147,7 +147,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
       {pending?.kind === 'project' && (
         <InputModal
           title="新增项目"
-          fields={[{ key: 'name', label: '项目名', placeholder: '如 GYJ2 monorepo' }]}
+          fields={[{ key: 'name', label: '项目名(最多 6 字)', placeholder: '如 我的项目', maxLength: 6 }]}
           onSubmit={(v) => {
             addProject(v.name.trim())
             setPending(null)

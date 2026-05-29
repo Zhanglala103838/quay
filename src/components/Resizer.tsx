@@ -8,9 +8,9 @@ import { useEffect, useRef } from 'react'
 /// ② 让终端 ResizeObserver 跳过 fit(否则每帧 fit×多格+WebGL→卡)。松手派发 quay:resize-end,
 /// 终端据此统一 fit 一次。
 const LS = 'quay.sidebarW'
-const MIN = 270 // 保证 8 字项目名 + 操作 chips(+目录/+命令/✕)一行放得下、不换行
+const MIN = 320 // 保证较长项目名(osm-backend-admin 等)+ 操作 chips(+目录/+命令/✕)一行放得下、不换行
 const MAX = 560
-const DEFAULT = 292
+const DEFAULT = 340
 const COLLAPSE_AT = 170 // 继续往左拖超过此宽度 → 自动折叠
 
 export function Resizer({

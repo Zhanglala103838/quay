@@ -11,6 +11,8 @@ export interface Field {
   options?: string[]
   /// 未手动编辑前,镜像另一字段的值(如 标签 自动跟随 命令)。一旦手改即解除。
   mirrorOf?: string
+  /// 最大输入字符数(如项目名限 6 字)。
+  maxLength?: number
 }
 
 /// 应用内输入弹窗。替代 window.prompt —— 后者在 Tauri WKWebView 不工作。
@@ -63,10 +65,12 @@ export function InputModal({
               ref={i === 0 ? firstRef : undefined}
               value={shown(f)}
               placeholder={f.placeholder}
+              maxLength={f.maxLength}
               list={f.options?.length ? `dl-${f.key}` : undefined}
               onChange={(e) => {
+                const v = f.maxLength ? Array.from(e.target.value).slice(0, f.maxLength).join('') : e.target.value
                 setDirty((d) => ({ ...d, [f.key]: true }))
-                setValues((v) => ({ ...v, [f.key]: e.target.value }))
+                setValues((vs) => ({ ...vs, [f.key]: v }))
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submit()
