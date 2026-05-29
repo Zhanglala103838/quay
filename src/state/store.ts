@@ -2,8 +2,23 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import type { Config, RunEvent } from '../lib/types'
 import { getConfig, setConfig } from '../lib/ipc'
+import { clampPage, pageOf, type Layout } from '../lib/paging'
 
 const LAST_PROJECT_KEY = 'quay.activeProjectId'
+
+const LAYOUT_KEY = (pid: string) => `quay.layout.${pid}`
+
+/// 读某项目持久化的布局(单/双/四格);无记录或非法 → 单格。
+function loadLayout(pid: string | null): Layout {
+  if (!pid) return 1
+  const v = Number(localStorage.getItem(LAYOUT_KEY(pid)))
+  return v === 2 || v === 4 ? v : 1
+}
+
+/// 工作区可见 run:当前项目 + 未归属(沿用 RunTabs 既有过滤,保持顺序)。
+function visibleRuns(runs: RunState[], activeProjectId: string | null): RunState[] {
+  return runs.filter((r) => !activeProjectId || r.projectId === activeProjectId || !r.projectId)
+}
 
 export interface RunState {
   runId: string
@@ -29,6 +44,8 @@ interface Store {
   runs: RunState[]
   activeRunId: string | null
   activeProjectId: string | null
+  layout: Layout
+  currentPage: number
   load: () => Promise<void>
   persist: () => Promise<void>
   addProject: (name: string) => void
@@ -38,6 +55,8 @@ interface Store {
   removeManualCommand: (projectId: string, cmdId: string) => void
   removeProject: (id: string) => void
   setActiveProject: (id: string) => void
+  setLayout: (n: Layout) => void
+  setPage: (n: number) => void
   upsertRun: (r: Omit<RunState, 'projectId'> & { projectId?: string }, focus?: boolean) => void
   applyRunEvent: (runId: string, e: RunEvent) => void
   setActive: (runId: string | null) => void
@@ -49,6 +68,8 @@ export const useStore = create<Store>((set, get) => ({
   runs: [],
   activeRunId: null,
   activeProjectId: null,
+  layout: 1,
+  currentPage: 0,
 
   load: async () => {
     const config = await getConfig()
@@ -56,7 +77,7 @@ export const useStore = create<Store>((set, get) => ({
     const saved = localStorage.getItem(LAST_PROJECT_KEY)
     const valid = config.projects.find((p) => p.id === saved)
     const activeProjectId = valid ? saved : (config.projects[0]?.id ?? null)
-    set({ config, activeProjectId })
+    set({ config, activeProjectId, layout: loadLayout(activeProjectId), currentPage: 0 })
   },
   persist: async () => {
     await setConfig(get().config)
@@ -117,22 +138,43 @@ export const useStore = create<Store>((set, get) => ({
   },
   setActiveProject: (id) => {
     localStorage.setItem(LAST_PROJECT_KEY, id)
-    set({ activeProjectId: id })
+    set({ activeProjectId: id, layout: loadLayout(id), currentPage: 0 })
   },
+  // 切布局:写当前项目 localStorage;currentPage 跟随聚焦格在新 capacity 下的页,保证聚焦格仍可见。
+  setLayout: (n) =>
+    set((s) => {
+      if (s.activeProjectId) localStorage.setItem(LAYOUT_KEY(s.activeProjectId), String(n))
+      const vis = visibleRuns(s.runs, s.activeProjectId)
+      const idx = s.activeRunId ? vis.findIndex((r) => r.runId === s.activeRunId) : -1
+      const currentPage = clampPage(idx >= 0 ? pageOf(idx, n) : s.currentPage, vis.length, n)
+      return { layout: n, currentPage }
+    }),
+  setPage: (n) =>
+    set((s) => {
+      const vis = visibleRuns(s.runs, s.activeProjectId)
+      return { currentPage: clampPage(n, vis.length, s.layout) }
+    }),
 
   upsertRun: (r, focus) =>
     set((s) => {
       const projectId = r.projectId || inferProjectId(s.config, r.cwd)
       const run: RunState = { ...r, projectId }
-      const patch: Partial<Store> = {
-        runs: [...s.runs.filter((x) => x.runId !== r.runId), run],
-        activeRunId: r.runId,
-      }
-      // 用户主动启动时,工作区切到该 run 的项目(reload 恢复不切,以免覆盖记忆的项目)
+      const runs = [...s.runs.filter((x) => x.runId !== r.runId), run]
+      const patch: Partial<Store> = { runs, activeRunId: r.runId }
+      // 用户主动启动时工作区切到该 run 的项目并读回其布局(reload 恢复不切,保留记忆项目)。
+      let activeProjectId = s.activeProjectId
+      let layout = s.layout
       if (focus && projectId) {
-        patch.activeProjectId = projectId
+        activeProjectId = projectId
+        layout = loadLayout(projectId)
         localStorage.setItem(LAST_PROJECT_KEY, projectId)
+        patch.activeProjectId = projectId
+        patch.layout = layout
       }
+      // 聚焦格(=刚 upsert 的 run)落在哪一页 → currentPage。新 run 在 runs 末尾,自然是末页。
+      const vis = visibleRuns(runs, activeProjectId)
+      const idx = vis.findIndex((x) => x.runId === r.runId)
+      patch.currentPage = clampPage(pageOf(idx, layout), vis.length, layout)
       return patch
     }),
   applyRunEvent: (runId, e) => {
@@ -145,13 +187,25 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
   setActive: (runId) => set({ activeRunId: runId }),
-  // 关闭并移除 tab;若关的是当前激活 tab,激活回退到最后一个剩余 run。
+  // 关闭并移除 tab;聚焦格被关则回退到当前页剩余 run(否则 visible 末个),页码钳制不越界。
   closeRun: (runId) =>
     set((s) => {
       const runs = s.runs.filter((r) => r.runId !== runId)
-      const activeRunId =
-        s.activeRunId === runId ? (runs[runs.length - 1]?.runId ?? null) : s.activeRunId
-      return { runs, activeRunId }
+      const vis = visibleRuns(runs, s.activeProjectId)
+      let activeRunId = s.activeRunId
+      if (s.activeRunId === runId) {
+        const start = s.currentPage * s.layout
+        const pageRuns = vis.slice(start, start + s.layout)
+        activeRunId = pageRuns[pageRuns.length - 1]?.runId ?? vis[vis.length - 1]?.runId ?? null
+      }
+      let currentPage = s.currentPage
+      if (activeRunId) {
+        const idx = vis.findIndex((r) => r.runId === activeRunId)
+        currentPage = clampPage(pageOf(idx, s.layout), vis.length, s.layout)
+      } else {
+        currentPage = clampPage(currentPage, vis.length, s.layout)
+      }
+      return { runs, activeRunId, currentPage }
     }),
 }))
 
