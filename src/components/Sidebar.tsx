@@ -9,6 +9,7 @@ import { smartGroup, explainCommand } from '../lib/deepseek'
 import { InputModal } from './InputModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
+import { DeleteButton } from './ui/DeleteButton'
 
 interface RunFn {
   (label: string, cwd: string, command: string): void
@@ -87,8 +88,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 >
                   +命令
                 </button>
-                <button
-                  className="pill-btn danger"
+                <DeleteButton
                   title="移除项目"
                   onClick={() =>
                     askConfirm({
@@ -98,9 +98,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                       onConfirm: () => removeProject(p.id),
                     })
                   }
-                >
-                  ✕
-                </button>
+                />
               </span>
             </div>
 
@@ -252,18 +250,7 @@ function CmdRow({
             {explain ? '×' : '?'}
           </button>
         )}
-        {onRemove && (
-          <button
-            className="cmd-remove"
-            title="删除此命令"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove()
-            }}
-          >
-            ✕
-          </button>
-        )}
+        {onRemove && <DeleteButton title="删除此命令" floatRight onClick={onRemove} />}
       </div>
       {explain && (
         <div className={'cmd-explain' + (explain.err ? ' err' : '')}>
@@ -339,9 +326,18 @@ function DirNode({
   const [warn, setWarn] = useState('')
   const [open, setOpen] = useState(false) // 目录默认收起
   const configured = useSettings((s) => s.configured)
-  const [aiMode, setAiMode] = useState(false)
+  // AI 分组开关按目录持久化(重启不丢);分组结果本身已由 smartGroup 缓存在 localStorage。
+  const aiModeKey = `quay.aimode.${path}`
+  const [aiMode, setAiMode] = useState(() => localStorage.getItem(aiModeKey) === '1')
   const [aiCats, setAiCats] = useState<Category[] | null>(null)
   const [aiState, setAiState] = useState<'idle' | 'loading' | 'error'>('idle')
+
+  const toggleAi = () =>
+    setAiMode((m) => {
+      const next = !m
+      localStorage.setItem(aiModeKey, next ? '1' : '0')
+      return next
+    })
 
   useEffect(() => {
     let cancelled = false
@@ -397,18 +393,7 @@ function DirNode({
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
         {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
-        {onRemove && (
-          <button
-            className="dir-remove"
-            title="删除此目录绑定"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove()
-            }}
-          >
-            ✕
-          </button>
-        )}
+        {onRemove && <DeleteButton title="删除此目录绑定" floatRight onClick={onRemove} />}
       </div>
 
       {open && (
@@ -418,7 +403,7 @@ function DirNode({
               <button
                 className={'ai-btn' + (aiMode ? ' active' : '')}
                 disabled={aiState === 'loading'}
-                onClick={() => setAiMode((m) => !m)}
+                onClick={toggleAi}
                 title="用 DeepSeek 智能重新分组命令"
               >
                 {aiState === 'loading' ? (
