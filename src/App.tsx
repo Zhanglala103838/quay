@@ -4,7 +4,10 @@ import { Sidebar } from './components/Sidebar'
 import { RunTabs } from './components/RunTabs'
 import { RunningBar } from './components/RunningBar'
 import { OrphanDialog } from './components/OrphanDialog'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuroraBackground } from './components/ui/AuroraBackground'
+import { SettingsButton } from './components/SettingsButton'
+import { Resizer } from './components/Resizer'
 import { useStore } from './state/store'
 import { runCommand, attachRun, listRuns, listOrphans } from './lib/ipc'
 import type { Orphan, RunEvent } from './lib/types'
@@ -80,13 +83,18 @@ export default function App() {
             <span className="logo-anchor">⚓</span>
             <span className="gradient-text">Quay</span>
           </span>
+          <div className="titlebar-right">
+            <SettingsButton />
+          </div>
         </div>
         <div className="main">
           <Sidebar onRun={onRun} />
+          <Resizer />
           <RunTabs writers={writers} />
         </div>
         <RunningBar />
         <OrphanDialog orphans={orphans} onClose={() => setOrphans([])} />
+        <ConfirmDialog />
       </div>
     </>
   )

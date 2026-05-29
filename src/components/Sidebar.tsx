@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
+import { askConfirm } from '../state/confirm'
 import { scanDir } from '../lib/ipc'
 import type { Script } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
@@ -81,7 +82,14 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 <button
                   className="pill-btn danger"
                   title="移除项目"
-                  onClick={() => removeProject(p.id)}
+                  onClick={() =>
+                    askConfirm({
+                      title: `删除项目「${p.name}」?`,
+                      message: '将移除该项目及其目录/命令配置(不影响磁盘上的文件)。',
+                      confirmText: '删除',
+                      onConfirm: () => removeProject(p.id),
+                    })
+                  }
                 >
                   ✕
                 </button>
