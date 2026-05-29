@@ -13,7 +13,7 @@ export function DeleteButton({
     <button
       type="button"
       className={'delete-btn' + (floatRight ? ' delete-btn-right' : '')}
-      title={title}
+      aria-label={title}
       // 靠右是布局需求,用内联保证(主题/配色交给 .delete-btn 由视觉会话统一)
       style={floatRight ? { marginLeft: 'auto' } : undefined}
       onClick={(e) => {

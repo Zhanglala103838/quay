@@ -62,13 +62,13 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
             <div
               className="project-head"
               onClick={() => setActiveProject(p.id)}
-              title="设为当前项目(右侧工作区跟随)"
+              aria-label="设为当前项目"
               style={{ cursor: 'pointer' }}
             >
               <span className="project-name">
                 {p.name}
                 {runningByProject(p.id) > 0 && (
-                  <span className="project-running" title={`${runningByProject(p.id)} 个在跑`}>
+                  <span className="project-running">
                     {runningByProject(p.id)}
                   </span>
                 )}
@@ -76,14 +76,14 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
               <span className="project-actions" onClick={(e) => e.stopPropagation()}>
                 <button
                   className="pill-btn"
-                  title="绑定含 package.json 的目录"
+                  aria-label="绑定含 package.json 的目录"
                   onClick={() => setPending({ kind: 'dir', projectId: p.id })}
                 >
                   +目录
                 </button>
                 <button
                   className="pill-btn"
-                  title="新增手动命令"
+                  aria-label="新增手动命令"
                   onClick={() => setPending({ kind: 'manual', projectId: p.id })}
                 >
                   +命令
@@ -241,12 +241,12 @@ function CmdRow({
   return (
     <>
       {/* 原生 title 代替 HeroUI Tooltip —— 避免 overlay 拦截滚动/点击 */}
-      <div className={'cmd' + (running ? ' running' : '')} onClick={onRun} title={command}>
+      <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
         <span className="cmd-name">{display}</span>
         {running && <span className="cmd-running-tag">运行中</span>}
         {configured && (
-          <button className="explain-btn" title="AI 解释这条命令" onClick={toggleExplain}>
+          <button className="explain-btn" aria-label="AI 解释这条命令" onClick={toggleExplain}>
             {explain ? '×' : '?'}
           </button>
         )}
@@ -292,7 +292,7 @@ function PrefixGroupNode({
         <span className="chevron">{open ? '▾' : '▸'}</span>
         <span className="pgroup-name">{group.prefix}</span>
         <span className="pgroup-count">{group.items.length}</span>
-        {runningCount > 0 && <span className="activity-dot" title={`${runningCount} 个在跑`} />}
+        {runningCount > 0 && <span className="activity-dot" />}
       </div>
       {open && (
         <div className="pgroup-body">
@@ -387,12 +387,12 @@ function DirNode({
   return (
     <div className="dir">
       {/* 用原生 title,不用 HeroUI Tooltip —— 后者的 overlay 会拦截列表区的点击和滚动 */}
-      <div className="dir-path" title={path} onClick={() => setOpen((o) => !o)}>
+      <div className="dir-path" onClick={() => setOpen((o) => !o)}>
         <span className="chevron">{open ? '▾' : '▸'}</span>
         <span className="dir-icon">📁</span>
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
-        {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
+        {dirRunning > 0 && <span className="activity-dot" />}
         {onRemove && <DeleteButton title="删除此目录绑定" floatRight onClick={onRemove} />}
       </div>
 
@@ -404,7 +404,7 @@ function DirNode({
                 className={'ai-btn' + (aiMode ? ' active' : '')}
                 disabled={aiState === 'loading'}
                 onClick={toggleAi}
-                title="用 DeepSeek 智能重新分组命令"
+                aria-label="用 DeepSeek 智能重新分组命令"
               >
                 {aiState === 'loading' ? (
                   <>

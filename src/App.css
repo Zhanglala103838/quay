@@ -428,6 +428,20 @@
   line-height: 16px;
 }
 
+/* 项目名后的"在跑数":绿色小药丸,对齐 running-chip(绿)+ dir-count(尺寸) */
+.project-running {
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: 99px;
+  background: rgba(52, 232, 164, 0.12);
+  border: 1px solid rgba(52, 232, 164, 0.25);
+  color: var(--green);
+  font-size: 10px;
+  line-height: 16px;
+  font-family: var(--font-mono);
+  vertical-align: middle;
+}
+
 /* 折叠箭头 */
 .chevron {
   display: inline-block;

@@ -71,14 +71,14 @@ export function RunTabs({ writers }: { writers: Writers }) {
               key={r.runId}
               className={'tab' + (active ? ' active' : '')}
               onClick={() => setActive(r.runId)}
-              title={r.command}
+             
             >
               {active && r.status === 'running' && <BorderBeam duration={5} color="var(--green)" />}
               {active && r.status !== 'running' && <BorderBeam duration={7} />}
               <span className={'dot ' + r.status} />
               <span className="tab-label">{r.label}</span>
               {r.status === 'running' ? (
-                <button className="tab-stop" title="停止" onClick={(e) => stop(e, r.runId, r.label)}>
+                <button className="tab-stop" aria-label="停止" onClick={(e) => stop(e, r.runId, r.label)}>
                   ■
                 </button>
               ) : (
@@ -86,7 +86,7 @@ export function RunTabs({ writers }: { writers: Writers }) {
               )}
               <button
                 className="tab-close"
-                title={r.status === 'running' ? '停止并关闭' : '关闭'}
+                aria-label="关闭"
                 onClick={(e) => close(e, r.runId, r.status === 'running')}
               >
                 ×
