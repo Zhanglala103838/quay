@@ -2,25 +2,27 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import { scanDir } from '../lib/ipc'
 import type { Script } from '../lib/types'
+import { InputModal } from './InputModal'
 
 interface RunFn {
   (label: string, cwd: string, command: string): void
 }
 
+type Pending =
+  | { kind: 'project' }
+  | { kind: 'dir'; projectId: string }
+  | { kind: 'manual'; projectId: string }
+  | null
+
 export function Sidebar({ onRun }: { onRun: RunFn }) {
   const { config, addProject, addDirectory, addManualCommand, removeProject } = useStore()
+  const [pending, setPending] = useState<Pending>(null)
 
   return (
     <div className="sidebar">
       <div className="sidebar-head">
         <span className="logo">⚓ Quay</span>
-        <button
-          className="add-btn"
-          onClick={() => {
-            const n = prompt('项目名(如 GYJ2 monorepo)')
-            if (n) addProject(n)
-          }}
-        >
+        <button className="add-btn" onClick={() => setPending({ kind: 'project' })}>
           + 项目
         </button>
       </div>
@@ -34,26 +36,8 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
           <div className="project-head">
             <span className="project-name">{p.name}</span>
             <span className="project-actions">
-              <button
-                onClick={() => {
-                  const d = prompt('目录绝对路径(含 package.json)')
-                  if (d) addDirectory(p.id, d.trim())
-                }}
-              >
-                +目录
-              </button>
-              <button
-                onClick={() => {
-                  const cwd = prompt('工作目录 cwd(绝对路径)')
-                  if (!cwd) return
-                  const cmd = prompt('命令(如 php think run)')
-                  if (!cmd) return
-                  const lb = prompt('标签', cmd) || cmd
-                  addManualCommand(p.id, lb, cwd.trim(), cmd.trim())
-                }}
-              >
-                +命令
-              </button>
+              <button onClick={() => setPending({ kind: 'dir', projectId: p.id })}>+目录</button>
+              <button onClick={() => setPending({ kind: 'manual', projectId: p.id })}>+命令</button>
               <button className="danger" onClick={() => removeProject(p.id)}>
                 ✕
               </button>
@@ -72,6 +56,55 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
           ))}
         </div>
       ))}
+
+      {pending?.kind === 'project' && (
+        <InputModal
+          title="新增项目"
+          fields={[{ key: 'name', label: '项目名', placeholder: '如 GYJ2 monorepo' }]}
+          onSubmit={(v) => {
+            addProject(v.name.trim())
+            setPending(null)
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+
+      {pending?.kind === 'dir' && (
+        <InputModal
+          title="绑定目录"
+          fields={[
+            {
+              key: 'path',
+              label: '目录绝对路径(含 package.json)',
+              placeholder: '/Users/you/code/your-project',
+            },
+          ]}
+          onSubmit={(v) => {
+            addDirectory(pending.projectId, v.path.trim())
+            setPending(null)
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+
+      {pending?.kind === 'manual' && (
+        <InputModal
+          title="新增手动命令"
+          fields={[
+            { key: 'command', label: '命令', placeholder: '如 php think run' },
+            { key: 'cwd', label: '工作目录 cwd(绝对路径)', placeholder: '/Users/you/code/api' },
+            { key: 'label', label: '标签(可选)', placeholder: '不填则用命令本身' },
+          ]}
+          onSubmit={(v) => {
+            const cmd = v.command.trim()
+            const cwd = v.cwd.trim()
+            if (!cmd || !cwd) return
+            addManualCommand(pending.projectId, v.label.trim() || cmd, cwd, cmd)
+            setPending(null)
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   )
 }
