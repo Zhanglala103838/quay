@@ -12,7 +12,7 @@
 /* ── 设计 token ── */
 @theme {
   --font-display: 'Bricolage Grotesque Variable', -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', 'Menlo', monospace;
+  --font-mono: 'JetBrains Mono Variable', 'PingFang SC', 'Menlo', monospace;
 
   --color-harbor-abyss: #060a12;
   --color-harbor-deep: #0a1018;
@@ -55,6 +55,9 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* 窗口拖拽放大时 WKWebView 重绘滞后会露底——把基础层也铺成深色,露出的也是 app 深色而非灰黑。
+     真正的露底色由 tauri.conf backgroundColor(窗口+webview)兜底,这里是文档层的二重保险。 */
+  background: var(--color-harbor-abyss);
 }
 
 body {

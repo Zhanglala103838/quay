@@ -30,8 +30,8 @@ pub struct RunHandle {
     pub cwd: String,
     pub command: String,
     pub killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
-    // 持有 master 保持 PTY 开启;drop 即触发 reader EOF。
-    pub _master: Box<dyn portable_pty::MasterPty + Send>,
+    // 持有 master 保持 PTY 开启(drop 即触发 reader EOF);并用于 resize_run 调整 PTY 尺寸。
+    pub master: Box<dyn portable_pty::MasterPty + Send>,
     pub ring: Arc<Mutex<VecDeque<String>>>,
     pub sink: SinkHolder,
     pub exited: ExitHolder,
@@ -165,7 +165,7 @@ pub fn spawn_run(
             cwd,
             command,
             killer,
-            _master: pair.master,
+            master: pair.master,
             ring,
             sink: sink_holder,
             exited,
@@ -310,6 +310,25 @@ pub fn stop_run(reg: &Registry, run_id: &str) -> Result<(), String> {
 pub fn close_run(reg: &Registry, run_id: &str) {
     reg.0.lock().unwrap().remove(run_id);
     ledger::remove_entry(run_id);
+}
+
+/// 调整某 run 的 PTY 尺寸,让生产者(webpack/vite 等)按真实显示宽度重排新输出。
+/// PTY 初始固定 120×40,但前端 xterm 的实际列数随分屏布局变化;不同步会导致
+/// 生产者按 120 列排版、xterm 按显示宽度软折行,两者永远错位。resize 会向进程组发
+/// SIGWINCH,多数 TUI/进度条工具据此重绘。run 已退出或尺寸非法时静默忽略。
+pub fn resize_run(reg: &Registry, run_id: &str, cols: u16, rows: u16) {
+    if cols == 0 || rows == 0 {
+        return;
+    }
+    let map = reg.0.lock().unwrap();
+    if let Some(h) = map.get(run_id) {
+        let _ = h.master.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        });
+    }
 }
 
 pub fn replay_ring(reg: &Registry, run_id: &str) -> String {

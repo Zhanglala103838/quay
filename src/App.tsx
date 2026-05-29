@@ -8,10 +8,13 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuroraBackground } from './components/ui/AuroraBackground'
 import { SettingsButton } from './components/SettingsButton'
 import { SidebarToggle } from './components/SidebarToggle'
-import { Resizer } from './components/Resizer'
+import { listen } from '@tauri-apps/api/event'
 import { useStore } from './state/store'
 import { runCommand, attachRun, listRuns, listOrphans } from './lib/ipc'
+import { termRegistry } from './lib/termRegistry'
+import { notifyCommandDone } from './lib/notify'
 import type { Orphan, RunEvent } from './lib/types'
+import quayLogo from './assets/quay-logo.png'
 import './App.css'
 
 export default function App() {
@@ -36,7 +39,13 @@ export default function App() {
 
   const handler = (runId: string) => (e: RunEvent) => {
     if (e.type === 'output') write(runId, e.chunk)
-    else applyRunEvent(runId, e)
+    else {
+      applyRunEvent(runId, e)
+      if (e.type === 'exit') {
+        const label = useStore.getState().runs.find((r) => r.runId === runId)?.label ?? '命令'
+        notifyCommandDone(label, e.code)
+      }
+    }
   }
 
   const [orphans, setOrphans] = useState<Orphan[]>([])
@@ -48,6 +57,18 @@ export default function App() {
       localStorage.setItem('quay.sidebarCollapsed', next ? '1' : '0')
       return next
     })
+
+  // 原生菜单/快捷键事件(后端 emit):切侧栏 ⌘B、清屏当前终端 ⌘K。设置 ⌘, 由 SettingsButton 监听。
+  useEffect(() => {
+    const uns: Array<() => void> = []
+    listen('menu-toggle-sidebar', () => toggleSidebar()).then((u) => uns.push(u))
+    listen('menu-clear-term', () => {
+      const aid = useStore.getState().activeRunId
+      if (aid) termRegistry[aid]?.clear()
+    }).then((u) => uns.push(u))
+    return () => uns.forEach((u) => u())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     // 先 load(config 就绪)再恢复 run —— upsertRun 要靠 config 按 cwd 推断 projectId。
@@ -92,7 +113,7 @@ export default function App() {
             <SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} />
           </div>
           <span className="titlebar-brand" data-tauri-drag-region>
-            <span className="logo-anchor">⚓</span>
+            <img src={quayLogo} className="logo-mark" alt="" draggable={false} data-tauri-drag-region />
             <span className="gradient-text">Quay</span>
           </span>
           <div className="titlebar-right">
@@ -101,7 +122,6 @@ export default function App() {
         </div>
         <div className="main">
           <Sidebar onRun={onRun} />
-          <Resizer />
           <Workspace writers={writers} />
         </div>
         <RunningBar />

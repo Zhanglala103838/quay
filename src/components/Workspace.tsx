@@ -4,6 +4,7 @@ import { TermPane } from './TermPane'
 import { WorkspaceToolbar } from './WorkspaceToolbar'
 import { stopCommand, closeCommand } from '../lib/ipc'
 import { askConfirm } from '../state/confirm'
+import quayLogo from '../assets/quay-logo.png'
 
 type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
@@ -56,7 +57,7 @@ export function Workspace({ writers }: { writers: Writers }) {
         <WorkspaceToolbar />
       ) : (
         <div className="empty-main">
-          <div className="empty-anchor">⚓</div>
+          <img src={quayLogo} className="empty-mark" alt="" draggable={false} />
           <div className="empty-main-text">点左侧任一命令开始运行 ▶</div>
         </div>
       )}

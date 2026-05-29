@@ -11,6 +11,35 @@ use tauri::menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager, WindowEvent};
 
+/// 强制整个 app 为深色外观(NSAppearance = darkAqua)。
+/// 全屏时系统菜单栏(顶部 Apple/应用菜单条)的外观跟随 NSApp.appearance——
+/// 不强制就会跟随系统浅色,与 Quay 的深色玻璃 UI 割裂。系统菜单栏无法自绘,这是唯一对齐手段。
+#[cfg(target_os = "macos")]
+fn force_dark_appearance() {
+    use objc2_app_kit::{NSAppearance, NSAppearanceNameDarkAqua, NSApplication};
+    use objc2_foundation::MainThreadMarker;
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let app = NSApplication::sharedApplication(mtm);
+    let appearance = unsafe { NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua) };
+    app.setAppearance(appearance.as_deref());
+}
+
+/// 开启 AppKit 原生「按背景拖动窗口」(等价 Electron 的 -webkit-app-region: drag,纯原生、零 IPC)。
+/// 背景:Tauri 的 `data-tauri-drag-region` 是 JS+IPC(每次 mousedown 调 startDragging IPC),命中
+/// 上游 bug #12597——拖完窗口后 IPC 卡几秒,导致放手即拖不动、循环。原生 movableByWindowBackground
+/// 由 AppKit 直接处理 mousedown→拖窗、不经 IPC,故免疫。代价:整个 webview 背景都可拖窗
+/// (WKWebView 无法按区域排除),故必须移除会与拖窗冲突的内容拖拽手势(如侧栏分栏条 Resizer)。
+#[cfg(target_os = "macos")]
+fn enable_native_window_drag(window: &tauri::WebviewWindow) {
+    use objc2_app_kit::NSWindow;
+    let Ok(ptr) = window.ns_window() else { return };
+    if ptr.is_null() {
+        return;
+    }
+    let ns_window: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
+    ns_window.setMovableByWindowBackground(true);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -25,6 +54,16 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(runner::Registry::default())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                force_dark_appearance();
+                // 原生窗口拖动(绕开 data-tauri-drag-region 的 IPC 卡顿 #12597)。
+                // 配套:已移除侧栏分栏条拖拽,避免内容拖拽手势与原生拖窗冲突。
+                if let Some(win) = app.get_webview_window("main") {
+                    enable_native_window_drag(&win);
+                }
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -127,6 +166,7 @@ pub fn run() {
             commands::run_command,
             commands::stop_command,
             commands::close_command,
+            commands::resize_run,
             commands::replay,
             commands::list_runs,
             commands::attach_run,

@@ -6,6 +6,9 @@ export const getConfig = () => invoke<Config>('get_config')
 export const setConfig = (cfg: Config) => invoke<void>('set_config', { cfg })
 export const stopCommand = (runId: string) => invoke<void>('stop_command', { runId })
 export const closeCommand = (runId: string) => invoke<void>('close_command', { runId })
+/// fit 出真实列/行后同步 PTY 尺寸,让生产者按显示宽度重排新输出(发 SIGWINCH)。
+export const resizeRun = (runId: string, cols: number, rows: number) =>
+  invoke<void>('resize_run', { runId, cols, rows })
 export const replay = (runId: string) => invoke<string>('replay', { runId })
 export const listRuns = () => invoke<RunInfo[]>('list_runs')
 export const runsMemory = () => invoke<MemReport>('runs_memory')

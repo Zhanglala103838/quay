@@ -120,8 +120,14 @@
   letter-spacing: 0.01em;
   opacity: 0.92;
 }
-.titlebar-brand .logo-anchor {
-  font-size: 14px;
+.titlebar-brand .logo-mark {
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(56, 232, 255, 0.45));
 }
 .titlebar-right {
   display: flex;
@@ -261,6 +267,19 @@
 .app.sidebar-collapsed .resizer {
   display: none;
 }
+/* 拖拽调整宽度时关掉 width 过渡,否则每步补间→橡皮筋卡顿(折叠/展开仍走过渡) */
+html.resizing .sidebar {
+  transition: none;
+}
+/* 拖拽性能关键:拖动期间临时关掉玻璃面板的 backdrop-filter。
+   宽度每帧变 → backdrop-filter 要每帧把背后(模糊极光)重采样,是玻璃 UI 拖动卡顿头号杀手。
+   松手即恢复。期间用稍实的纯色背景兜底,避免面板变太透。 */
+html.resizing .sidebar,
+html.resizing .runtabs {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(10, 16, 24, 0.92) !important;
+}
 
 .sidebar-head {
   display: flex;
@@ -279,10 +298,6 @@
   font-weight: 700;
   font-size: 19px;
   letter-spacing: -0.01em;
-}
-.logo-anchor {
-  font-size: 17px;
-  filter: drop-shadow(0 0 6px rgba(56, 232, 255, 0.6));
 }
 
 .sidebar-title {
@@ -330,11 +345,18 @@
   font-size: 14px;
   color: var(--text-bright);
   letter-spacing: -0.01em;
+  /* 项目名永不折行:占满剩余宽度,过长才省略号(<8 字在 MIN 宽度下完整显示,绝不换行) */
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .project-actions {
   display: flex;
   gap: 5px;
+  flex-shrink: 0; /* chips 不被名字挤压;空间不足时名字先省略,不抢 chips */
 }
 
 /* 通用小按钮（侧栏 +目录/+命令/✕） */
@@ -729,10 +751,13 @@
   gap: 14px;
   color: var(--text-dim);
 }
-.empty-anchor {
-  font-size: 52px;
-  opacity: 0.18;
-  filter: drop-shadow(0 0 24px rgba(56, 232, 255, 0.4));
+.empty-mark {
+  width: 112px;
+  height: 112px;
+  border-radius: 26px;
+  object-fit: cover;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 28px rgba(56, 232, 255, 0.35));
 }
 .empty-main-text {
   font-size: 13px;
@@ -1008,9 +1033,11 @@
   gap: 5px;
   padding: 3px 6px;
   border-radius: 9px;
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  /* 拖动性能关键:toolbar 浮在「实时刷新的终端」上方,backdrop-filter 会每帧把背后变化的
+     终端内容重采样+模糊 → 打满合成器 → 原生窗口拖动被饿死(偶发拖不动,正是刷屏时)。
+     窗口拖动是原生的、拿不到 JS 钩子临时关 blur,故对「叠在活动内容上的」面板永久去掉 blur,
+     换不透明深色底(零每帧成本,观感几乎一致)。参见 html.resizing 同款兜底。 */
+  background: rgba(16, 24, 36, 0.92);
   border: 1px solid var(--glass-border);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   opacity: 0.35;
@@ -1052,30 +1079,61 @@
   padding: 10px 14px 12px 14px;
 }
 
-/* 终端滚动条:对齐 app 玻璃蓝设计。xterm 的 .xterm-viewport 默认 overflow-y:scroll,
-   已恒占一条 lane(即「专门区域」);这里把它做成可见的内陷胶囊轨道 + 干净滑块。
-   覆盖 index.css 全局细滚动条。注:不再用 scrollbar-gutter(WKWebView 支持不稳)。 */
-.term .xterm-viewport::-webkit-scrollbar {
-  width: 14px;
+/* 给 xterm 元素右内边距,为自绘滚动条(.term-scroll,right:14px width:8px)预留 lane,
+   让文字不会铺到滚动条下面。FitAddon 算列数时会显式减去 .xterm 的水平 padding,故文字会
+   据此收窄、停在 lane 左侧。 */
+.term .xterm {
+  padding-right: 16px;
 }
-/* 轨道 = 可见的专门区域:极淡内陷胶囊(透明边 + clip 让其在 lane 内收窄居中) */
-.term .xterm-viewport::-webkit-scrollbar-track {
-  background: rgba(120, 180, 220, 0.06);
+
+/* 终端滚动条:隐藏 xterm.js 6.0 的【内置自渲染 DOM 滚动条】,只用 TerminalView 自绘的
+   .term-scroll-thumb(常驻青色,读 xterm 滚动状态定位)。
+   ⚠️ 关键认知:那条会"滚动时才出现"的灰条不是 macOS 系统原生 overlay,而是 xterm 6.0 自己
+   渲染的普通 DOM 元素 `div.scrollbar.vertical.fade > div.slider`(滚动时由其控制器 show/hide)。
+   故 ::-webkit-scrollbar 涂色/transparent、overflow 裁剪、-webkit-appearance 全部无效——
+   它根本不走原生滚动条体系。直接 display:none 隐藏容器即可。 */
+.term .scrollbar,
+.term .slider {
+  display: none !important;
+}
+/* 再禁掉 viewport 的原生滚动容器,防非 mac 平台冒出原生条;滚轮走 xterm 的 scrollLines
+   (onRequestScrollLines→滚 buffer ydisp),与原生 scrollTop 无关,故不受影响。 */
+.term .xterm-viewport {
+  overflow: hidden !important;
+}
+/* 自绘滚动条轨道:覆盖在 .term 右侧预留 lane 上。pointer-events:none → 空白处点击穿透到
+   终端(可选区);仅 thumb 接收拖拽。 */
+.term-scroll {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  bottom: 12px;
+  width: 8px;
+  pointer-events: none;
+  z-index: 5;
+}
+/* 滑块:常态即亮的 app accent 青色,始终可见(不靠 hover);位置/高度由 syncBar 写 transform。 */
+.term-scroll-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
   border-radius: 99px;
-  border: 4px solid transparent;
-  background-clip: padding-box;
+  background: rgba(56, 232, 255, 0.7);
+  pointer-events: auto;
+  cursor: default;
+  opacity: 0;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+  will-change: transform;
 }
-/* 滑块:玻璃蓝胶囊,同样收窄居中(14px lane 内约 6px),hover 走 accent */
-.term .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(120, 180, 220, 0.3);
-  border-radius: 99px;
-  border: 4px solid transparent;
-  background-clip: padding-box;
-  min-height: 32px;
+.term-scroll-thumb:hover {
+  background: rgba(56, 232, 255, 0.9);
 }
-.term .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 232, 255, 0.55);
-  background-clip: padding-box;
+.term-scroll-thumb:active {
+  background: #38e8ff;
 }
 
 /* ───────────── 运行状态栏 ───────────── */

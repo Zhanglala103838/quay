@@ -45,6 +45,12 @@ pub fn close_command(reg: State<Registry>, run_id: String) {
     runner::close_run(&reg, &run_id)
 }
 
+/// 前端 fit 出真实列/行后调用,把 PTY 尺寸同步到显示宽度(生产者据此重排新输出)。
+#[tauri::command]
+pub fn resize_run(reg: State<Registry>, run_id: String, cols: u16, rows: u16) {
+    runner::resize_run(&reg, &run_id, cols, rows);
+}
+
 #[tauri::command]
 pub fn replay(reg: State<Registry>, run_id: String) -> String {
     runner::replay_ring(&reg, &run_id)
