@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Button } from '@heroui/react'
 import { BorderBeam } from './ui/BorderBeam'
 
 export interface Field {
@@ -99,12 +98,12 @@ export function InputModal({
           </div>
         ))}
         <div className="modal-actions">
-          <Button variant="primary" onPress={submit}>
+          <button className="modal-btn primary" onClick={submit}>
             确定
-          </Button>
-          <Button variant="outline" onPress={onCancel}>
+          </button>
+          <button className="modal-btn ghost" onClick={onCancel}>
             取消
-          </Button>
+          </button>
         </div>
       </div>
     </div>,

@@ -315,6 +315,44 @@
   box-shadow: 0 0 14px rgba(255, 107, 107, 0.15);
 }
 
+/* 统一弹窗按钮:柔和描边(不用高亮填充,避免太刺眼) */
+.modal-btn {
+  padding: 6px 18px;
+  border-radius: 9px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text);
+  transition: all 0.18s;
+}
+.modal-btn.primary {
+  border-color: rgba(56, 232, 255, 0.35);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.modal-btn.primary:hover {
+  background: rgba(56, 232, 255, 0.16);
+  box-shadow: 0 0 14px rgba(56, 232, 255, 0.16);
+}
+.modal-btn.danger {
+  border-color: rgba(255, 107, 107, 0.4);
+  color: var(--red);
+  background: rgba(255, 107, 107, 0.1);
+}
+.modal-btn.danger:hover {
+  background: rgba(255, 107, 107, 0.18);
+  box-shadow: 0 0 14px rgba(255, 107, 107, 0.16);
+}
+.modal-btn.ghost {
+  color: var(--text-dim);
+}
+.modal-btn.ghost:hover {
+  color: var(--text);
+  border-color: var(--glass-border-hi);
+}
+
 /* 统一删除按钮:幽灵态 ✕,hover 变红,呼应 pill-btn.danger 视觉 */
 .delete-btn {
   display: inline-flex;

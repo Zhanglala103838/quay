@@ -15,7 +15,7 @@ export function ConfirmDialog() {
         {pending.message && <p className="modal-sub">{pending.message}</p>}
         <div className="modal-actions">
           <button
-            className="confirm-danger"
+            className="modal-btn danger"
             onClick={() => {
               pending.onConfirm()
               close()
@@ -23,7 +23,7 @@ export function ConfirmDialog() {
           >
             {pending.confirmText ?? '确定'}
           </button>
-          <button className="confirm-cancel" onClick={close}>
+          <button className="modal-btn ghost" onClick={close}>
             取消
           </button>
         </div>
