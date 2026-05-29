@@ -5,7 +5,6 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::ipc::Channel;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -14,7 +13,12 @@ pub enum RunEvent {
     Exit { code: Option<i32> },
 }
 
+/// 输出口抽象:生产环境是 Tauri Channel,测试环境是闭包 sink。
+/// 抽象出来才能在无头测试里验证进程组/停止等 🔴 不变量。
+pub type Sink = Arc<dyn Fn(RunEvent) + Send + Sync>;
+
 pub struct RunHandle {
+    #[allow(dead_code)] // 保留备用(诊断/未来按 pid 操作)
     pub pid: u32,
     pub pgid: i32,
     pub killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
@@ -36,7 +40,7 @@ pub fn spawn_run(
     label: String,
     cwd: String,
     command: String,
-    channel: Channel<RunEvent>,
+    sink: Sink,
 ) -> Result<u32, String> {
     let pty = native_pty_system();
     let pair = pty
@@ -74,7 +78,7 @@ pub fn spawn_run(
 
     let ring = Arc::new(Mutex::new(VecDeque::<String>::new()));
     let ring_r = ring.clone();
-    let ch = channel.clone();
+    let sink_r = sink.clone();
 
     // reader 线程:节流 ~30ms 合并 chunk 再推前端。
     std::thread::spawn(move || {
@@ -87,7 +91,7 @@ pub fn spawn_run(
                 Ok(n) => {
                     acc.push_str(&String::from_utf8_lossy(&buf[..n]));
                     if last.elapsed() >= Duration::from_millis(30) || acc.len() > 4096 {
-                        flush(&ch, &ring_r, &mut acc);
+                        flush(&sink_r, &ring_r, &mut acc);
                         last = Instant::now();
                     }
                 }
@@ -95,17 +99,17 @@ pub fn spawn_run(
             }
         }
         if !acc.is_empty() {
-            flush(&ch, &ring_r, &mut acc);
+            flush(&sink_r, &ring_r, &mut acc);
         }
     });
 
     // waiter 线程:退出后推 Exit + 清台账。
-    let ch2 = channel.clone();
+    let sink_w = sink.clone();
     let rid = run_id.clone();
     std::thread::spawn(move || {
         let status = child.wait().ok();
         let code = status.map(|s| s.exit_code() as i32);
-        let _ = ch2.send(RunEvent::Exit { code });
+        sink_w(RunEvent::Exit { code });
         ledger::remove_entry(&rid);
     });
 
@@ -134,7 +138,7 @@ pub fn spawn_run(
     Ok(pid)
 }
 
-fn flush(ch: &Channel<RunEvent>, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
+fn flush(sink: &Sink, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
     let chunk = std::mem::take(acc);
     {
         let mut r = ring.lock().unwrap();
@@ -145,7 +149,7 @@ fn flush(ch: &Channel<RunEvent>, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut 
             r.pop_front();
         }
     }
-    let _ = ch.send(RunEvent::Output { chunk });
+    sink(RunEvent::Output { chunk });
 }
 
 /// 停止:SIGTERM 进程组(负 pgid),killer 兜底。
@@ -170,4 +174,59 @@ pub fn replay_ring(reg: &Registry, run_id: &str) -> String {
         .get(run_id)
         .map(|h| h.ring.lock().unwrap().iter().cloned().collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 🔴 核心不变量验证:PTY 子进程必须在独立进程组,
+    /// 否则 stop_run 的 kill(-pgid) 会连 Quay 自己一起干掉。
+    /// 同时验证:输出能流出 + stop 真能杀死子进程。
+    #[test]
+    fn child_in_own_process_group_streams_and_stops() {
+        let reg = Registry::default();
+        let collected = Arc::new(Mutex::new(String::new()));
+        let c2 = collected.clone();
+        let sink: Sink = Arc::new(move |e: RunEvent| {
+            if let RunEvent::Output { chunk } = e {
+                c2.lock().unwrap().push_str(&chunk);
+            }
+        });
+
+        let run_id = "test_pg".to_string();
+        let pid = spawn_run(
+            &reg,
+            run_id.clone(),
+            "t".into(),
+            "/tmp".into(),
+            "echo QUAY_HELLO; sleep 30".into(),
+            sink,
+        )
+        .expect("spawn");
+
+        // 子进程进程组必须 ≠ 测试进程进程组(否则 kill(-pgid) 自杀)
+        let my_pgid = unsafe { libc::getpgid(0) };
+        let child_pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
+        assert!(child_pgid > 0, "child pgid should be valid");
+        assert_ne!(
+            child_pgid, my_pgid,
+            "🔴 child MUST be in its own process group"
+        );
+
+        // 等输出流出
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            collected.lock().unwrap().contains("QUAY_HELLO"),
+            "output should stream through sink"
+        );
+
+        // stop 必须真杀死子进程
+        stop_run(&reg, &run_id).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            !crate::identity::pid_alive(pid),
+            "child should be dead after stop_run"
+        );
+    }
 }

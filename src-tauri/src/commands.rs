@@ -28,7 +28,11 @@ pub fn run_command(
     command: String,
     on_event: Channel<RunEvent>,
 ) -> Result<u32, String> {
-    runner::spawn_run(&reg, run_id, label, cwd, command, on_event)
+    // 把 Tauri Channel 包成通用 sink,runner 不直接依赖 Channel(便于测试)。
+    let sink: runner::Sink = std::sync::Arc::new(move |e: RunEvent| {
+        let _ = on_event.send(e);
+    });
+    runner::spawn_run(&reg, run_id, label, cwd, command, sink)
 }
 
 #[tauri::command]
