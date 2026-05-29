@@ -152,7 +152,15 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
           title="新增手动命令"
           fields={[
             { key: 'command', label: '命令', placeholder: '如 php think run' },
-            { key: 'cwd', label: '工作目录 cwd(绝对路径)', placeholder: '/Users/you/code/api' },
+            {
+              key: 'cwd',
+              label: '工作目录 cwd(可选已绑目录或自定义)',
+              placeholder: '/Users/you/code/api',
+              // 快速选择:该项目已绑定的目录;也可手动输入任意路径
+              options: config.projects
+                .find((p) => p.id === pending.projectId)
+                ?.directories.map((d) => d.path),
+            },
             { key: 'label', label: '标签(可选)', placeholder: '不填则用命令本身' },
           ]}
           onSubmit={(v) => {

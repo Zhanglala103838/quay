@@ -8,6 +8,8 @@ export interface Field {
   label: string
   placeholder?: string
   initial?: string
+  /// 提供 datalist 快速选择项(仍可自定义输入)。
+  options?: string[]
 }
 
 /// 应用内输入弹窗。替代 window.prompt —— 后者在 Tauri WKWebView 不工作。
@@ -51,12 +53,35 @@ export function InputModal({
               ref={i === 0 ? firstRef : undefined}
               value={values[f.key]}
               placeholder={f.placeholder}
+              list={f.options?.length ? `dl-${f.key}` : undefined}
               onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submit()
                 if (e.key === 'Escape') onCancel()
               }}
             />
+            {f.options?.length ? (
+              <datalist id={`dl-${f.key}`}>
+                {f.options.map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            ) : null}
+            {/* 快速选择 chips:点一下填入,仍可手改 */}
+            {f.options?.length ? (
+              <div className="field-chips">
+                {f.options.map((o) => (
+                  <button
+                    type="button"
+                    key={o}
+                    className="field-chip"
+                    onClick={() => setValues((v) => ({ ...v, [f.key]: o }))}
+                  >
+                    {o.split('/').filter(Boolean).pop() || o}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         ))}
         <div className="modal-actions">
