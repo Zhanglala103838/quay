@@ -36,7 +36,7 @@ interface Store {
   addManualCommand: (projectId: string, label: string, cwd: string, command: string) => void
   removeProject: (id: string) => void
   setActiveProject: (id: string) => void
-  upsertRun: (r: Omit<RunState, 'projectId'> & { projectId?: string }) => void
+  upsertRun: (r: Omit<RunState, 'projectId'> & { projectId?: string }, focus?: boolean) => void
   applyRunEvent: (runId: string, e: RunEvent) => void
   setActive: (runId: string | null) => void
 }
@@ -103,14 +103,20 @@ export const useStore = create<Store>((set, get) => ({
     set({ activeProjectId: id })
   },
 
-  upsertRun: (r) =>
+  upsertRun: (r, focus) =>
     set((s) => {
       const projectId = r.projectId || inferProjectId(s.config, r.cwd)
       const run: RunState = { ...r, projectId }
-      return {
+      const patch: Partial<Store> = {
         runs: [...s.runs.filter((x) => x.runId !== r.runId), run],
         activeRunId: r.runId,
       }
+      // 用户主动启动时,工作区切到该 run 的项目(reload 恢复不切,以免覆盖记忆的项目)
+      if (focus && projectId) {
+        patch.activeProjectId = projectId
+        localStorage.setItem(LAST_PROJECT_KEY, projectId)
+      }
+      return patch
     }),
   applyRunEvent: (runId, e) => {
     if (e.type === 'exit') {

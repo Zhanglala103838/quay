@@ -63,7 +63,7 @@ export default function App() {
 
   const onRun = (label: string, cwd: string, command: string) => {
     const runId = uuid()
-    upsertRun({ runId, label, cwd, command, status: 'running', exitCode: null })
+    upsertRun({ runId, label, cwd, command, status: 'running', exitCode: null }, true)
     runCommand({ runId, label, cwd, command }, handler(runId)).catch((err) => {
       write(runId, `\r\n[启动失败] ${err}\r\n`)
       applyRunEvent(runId, { type: 'exit', code: -1 })
