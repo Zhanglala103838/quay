@@ -33,12 +33,15 @@ interface Store {
   persist: () => Promise<void>
   addProject: (name: string) => void
   addDirectory: (projectId: string, path: string) => void
+  removeDirectory: (projectId: string, dirId: string) => void
   addManualCommand: (projectId: string, label: string, cwd: string, command: string) => void
+  removeManualCommand: (projectId: string, cmdId: string) => void
   removeProject: (id: string) => void
   setActiveProject: (id: string) => void
   upsertRun: (r: Omit<RunState, 'projectId'> & { projectId?: string }, focus?: boolean) => void
   applyRunEvent: (runId: string, e: RunEvent) => void
   setActive: (runId: string | null) => void
+  closeRun: (runId: string) => void
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -78,11 +81,25 @@ export const useStore = create<Store>((set, get) => ({
     set({ config: c })
     get().persist()
   },
+  removeDirectory: (pid, dirId) => {
+    const c = structuredClone(get().config)
+    const p = c.projects.find((x) => x.id === pid)
+    if (p) p.directories = p.directories.filter((d) => d.id !== dirId)
+    set({ config: c })
+    get().persist()
+  },
   addManualCommand: (pid, label, cwd, command) => {
     const c = structuredClone(get().config)
     c.projects
       .find((p) => p.id === pid)
       ?.manualCommands.push({ id: uuid(), label, cwd, command, long: true })
+    set({ config: c })
+    get().persist()
+  },
+  removeManualCommand: (pid, cmdId) => {
+    const c = structuredClone(get().config)
+    const p = c.projects.find((x) => x.id === pid)
+    if (p) p.manualCommands = p.manualCommands.filter((m) => m.id !== cmdId)
     set({ config: c })
     get().persist()
   },
@@ -128,6 +145,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
   setActive: (runId) => set({ activeRunId: runId }),
+  // 关闭并移除 tab;若关的是当前激活 tab,激活回退到最后一个剩余 run。
+  closeRun: (runId) =>
+    set((s) => {
+      const runs = s.runs.filter((r) => r.runId !== runId)
+      const activeRunId =
+        s.activeRunId === runId ? (runs[runs.length - 1]?.runId ?? null) : s.activeRunId
+      return { runs, activeRunId }
+    }),
 }))
 
 // dev-only：暴露 store 便于浏览器内调试 / 视觉走查

@@ -21,8 +21,16 @@ type Pending =
   | null
 
 export function Sidebar({ onRun }: { onRun: RunFn }) {
-  const { config, addProject, addDirectory, addManualCommand, removeProject, setActiveProject } =
-    useStore()
+  const {
+    config,
+    addProject,
+    addDirectory,
+    removeDirectory,
+    addManualCommand,
+    removeManualCommand,
+    removeProject,
+    setActiveProject,
+  } = useStore()
   // runs 引用稳定，组件体内派生 running label 集合（zustand v5）
   const runs = useStore((s) => s.runs)
   const activeProjectId = useStore((s) => s.activeProjectId)
@@ -97,7 +105,20 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
             </div>
 
             {p.directories.map((d) => (
-              <DirNode key={d.id} path={d.path} onRun={onRun} runningLabels={runningLabels} />
+              <DirNode
+                key={d.id}
+                path={d.path}
+                onRun={onRun}
+                runningLabels={runningLabels}
+                onRemove={() =>
+                  askConfirm({
+                    title: `删除目录绑定「${d.path.split('/').filter(Boolean).pop()}」?`,
+                    message: '仅从该项目移除此目录绑定(不删磁盘上的文件)。',
+                    confirmText: '删除',
+                    onConfirm: () => removeDirectory(p.id, d.id),
+                  })
+                }
+              />
             ))}
 
             {p.manualCommands.length > 0 && (
@@ -110,6 +131,13 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                     command={`${m.command} · ${m.cwd}`}
                     running={runningLabels.has(m.label)}
                     onRun={() => onRun(m.label, m.cwd, m.command)}
+                    onRemove={() =>
+                      askConfirm({
+                        title: `删除手动命令「${m.label}」?`,
+                        confirmText: '删除',
+                        onConfirm: () => removeManualCommand(p.id, m.id),
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -185,11 +213,13 @@ function CmdRow({
   command,
   running,
   onRun,
+  onRemove,
 }: {
   display: string
   command: string
   running: boolean
   onRun: () => void
+  onRemove?: () => void
 }) {
   const configured = useSettings((s) => s.configured)
   const [explain, setExplain] = useState<{ loading: boolean; text: string; err: boolean } | null>(
@@ -220,6 +250,18 @@ function CmdRow({
         {configured && (
           <button className="explain-btn" title="AI 解释这条命令" onClick={toggleExplain}>
             {explain ? '×' : '?'}
+          </button>
+        )}
+        {onRemove && (
+          <button
+            className="cmd-remove"
+            title="删除此命令"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove()
+            }}
+          >
+            ✕
           </button>
         )}
       </div>
@@ -286,10 +328,12 @@ function DirNode({
   path,
   onRun,
   runningLabels,
+  onRemove,
 }: {
   path: string
   onRun: RunFn
   runningLabels: Set<string>
+  onRemove?: () => void
 }) {
   const [scripts, setScripts] = useState<Script[]>([])
   const [warn, setWarn] = useState('')
@@ -353,6 +397,18 @@ function DirNode({
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
         {dirRunning > 0 && <span className="activity-dot" title={`${dirRunning} 个在跑`} />}
+        {onRemove && (
+          <button
+            className="dir-remove"
+            title="删除此目录绑定"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove()
+            }}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {open && (
