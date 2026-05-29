@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { v4 as uuid } from 'uuid'
 import { Sidebar } from './components/Sidebar'
-import { RunTabs } from './components/RunTabs'
+import { Workspace } from './components/Workspace'
 import { RunningBar } from './components/RunningBar'
 import { OrphanDialog } from './components/OrphanDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -90,7 +90,7 @@ export default function App() {
         <div className="main">
           <Sidebar onRun={onRun} />
           <Resizer />
-          <RunTabs writers={writers} />
+          <Workspace writers={writers} />
         </div>
         <RunningBar />
         <OrphanDialog orphans={orphans} onClose={() => setOrphans([])} />
