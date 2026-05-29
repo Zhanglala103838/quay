@@ -15,12 +15,14 @@
     linear-gradient(180deg, #070c15 0%, #060a12 55%, #04070d 100%);
 }
 
+/* 静态极光:动画版每帧重栅格化 blur(80px) 会打满合成器,导致窗口无法流畅拖动。
+   保留渐变质感,去掉 transform 动画 + will-change,换回丝滑拖动。 */
 .aurora-blob {
   position: absolute;
   border-radius: 50%;
   filter: blur(80px);
   opacity: 0.5;
-  will-change: transform;
+  transform: scale(1.15);
 }
 .aurora-blob-1 {
   width: 50vw;
@@ -28,7 +30,6 @@
   top: -18vw;
   left: -8vw;
   background: radial-gradient(circle, rgba(45, 212, 191, 0.5), transparent 68%);
-  animation: aurora-drift 22s ease-in-out infinite;
 }
 .aurora-blob-2 {
   width: 44vw;
@@ -36,7 +37,6 @@
   bottom: -20vw;
   right: -6vw;
   background: radial-gradient(circle, rgba(99, 102, 241, 0.42), transparent 68%);
-  animation: aurora-drift 28s ease-in-out infinite reverse;
 }
 .aurora-blob-3 {
   width: 36vw;
@@ -44,7 +44,6 @@
   top: 32%;
   left: 42%;
   background: radial-gradient(circle, rgba(56, 232, 255, 0.28), transparent 70%);
-  animation: aurora-drift 34s ease-in-out infinite;
 }
 
 /* 网点栅格 */
@@ -95,16 +94,23 @@
 
 /* 沉浸式拖拽顶栏（取代 macOS 原生标题栏） */
 .titlebar {
+  position: relative;
   flex-shrink: 0;
   height: 38px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  /* 品牌居中于整窗；交通灯在左上角 (<82px)，与窗口中点无重叠 */
+  justify-content: flex-end;
+  padding: 0 12px;
+  cursor: default; /* 否则品牌文字会显示 I 形编辑光标(且这是拖拽区,应为默认箭头) */
   -webkit-user-select: none;
   user-select: none;
 }
 .titlebar-brand {
+  /* 品牌绝对居中于整窗；交通灯在左上角 (<82px)，与窗口中点无重叠 */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -117,17 +123,84 @@
 .titlebar-brand .logo-anchor {
   font-size: 14px;
 }
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 设置齿轮 */
+.gear-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(120, 180, 220, 0.06);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.gear-btn:hover {
+  color: var(--accent);
+  border-color: var(--glass-border-hi);
+  background: var(--accent-soft);
+  box-shadow: 0 0 14px rgba(56, 232, 255, 0.18);
+}
+.gear-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+.gear-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 7px var(--green);
+  border: 1.5px solid var(--color-harbor-abyss);
+}
 
 .main {
   display: flex;
   flex: 1;
   min-height: 0;
-  gap: 10px;
+  gap: 0;
+}
+
+/* 分区拖拽手柄(侧栏↔工作区宽度) */
+.resizer {
+  flex-shrink: 0;
+  width: 10px;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.resizer::before {
+  content: '';
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--glass-border);
+  transition: all 0.18s;
+}
+.resizer:hover::before,
+.resizer.dragging::before {
+  background: var(--accent);
+  height: 60px;
+  box-shadow: 0 0 10px rgba(56, 232, 255, 0.5);
 }
 
 /* ───────────── Sidebar ───────────── */
 .sidebar {
-  width: 292px;
+  width: var(--sidebar-w, 292px);
   flex-shrink: 0;
   border-radius: 16px;
   overflow-y: auto;
@@ -242,6 +315,45 @@
   box-shadow: 0 0 14px rgba(255, 107, 107, 0.15);
 }
 
+/* 统一删除按钮:幽灵态 ✕,hover 变红,呼应 pill-btn.danger 视觉 */
+.delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.18s;
+}
+.delete-btn:hover {
+  opacity: 1;
+  color: var(--red);
+  border-color: rgba(255, 107, 107, 0.4);
+  background: rgba(255, 107, 107, 0.1);
+  box-shadow: 0 0 12px rgba(255, 107, 107, 0.15);
+}
+/* 行尾删除(目录行/命令行):默认更隐,hover 行时才明显 */
+.delete-btn-right {
+  opacity: 0.32;
+}
+.dir-path:hover .delete-btn-right,
+.cmd:hover .delete-btn-right {
+  opacity: 0.7;
+}
+.delete-btn-right:hover {
+  opacity: 1;
+}
+
 .dir {
   margin: 4px 0 4px 2px;
 }
@@ -304,6 +416,12 @@
   margin: 2px 0 4px 6px;
   padding-left: 6px;
   border-left: 1px solid var(--glass-border);
+  min-width: 0; /* flex 链收缩,长命令名靠 ellipsis 截断 */
+}
+.cat,
+.pgroup,
+.pgroup-body {
+  min-width: 0;
 }
 
 /* 语义类别 */
@@ -311,14 +429,33 @@
   margin: 4px 0;
 }
 .cat-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  opacity: 0.65;
-  padding: 5px 6px 3px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  opacity: 0.95;
+  padding: 9px 6px 5px;
+}
+/* 前置强调方块(发光) */
+.cat-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(56, 232, 255, 0.7);
+}
+/* 尾部渐隐分隔线,把每个阶段框成一节 */
+.cat-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--glass-border), transparent);
 }
 
 /* 前缀子分组 */
@@ -380,6 +517,7 @@
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
+  min-width: 0; /* flex 子项允许收缩,长命令名才能省略号截断而非撑爆 */
   color: var(--text);
   border: 1px solid transparent;
   transition: all 0.18s;
@@ -424,7 +562,21 @@
 }
 
 .cmd-name {
+  flex: 1;
+  min-width: 0;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* HeroUI Tooltip.Trigger 默认 inline-block,会按内容宽度撑开而绕过 .cmd 的收缩约束;
+   只对包裹命令行的那层强制块级 + 可收缩,长命令名才能 ellipsis 而非撑破侧栏。
+   :has 精确命中,不影响按钮/目录头的 tooltip。 */
+.tooltip__trigger:has(> .cmd),
+.tooltip__trigger:has(> .dir-path) {
+  display: block;
+  min-width: 0;
 }
 
 .cmd-hint {
@@ -549,10 +701,81 @@
   opacity: 0.7;
 }
 
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.tab-close:hover {
+  background: rgba(255, 107, 107, 0.16);
+  color: var(--red);
+}
+
 .term-pane {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 终端拷贝工具条(右上角悬浮) */
+.term-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 9px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  opacity: 0.35;
+  transition: opacity 0.18s;
+}
+.term-pane:hover .term-toolbar {
+  opacity: 1;
+}
+.term-toolbar-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  padding: 0 2px;
+}
+.term-copy-btn {
+  background: rgba(120, 180, 220, 0.06);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transition: all 0.16s;
+}
+.term-copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--glass-border-hi);
+  background: var(--accent-soft);
+}
+.term-copied {
+  font-size: 11px;
+  color: var(--green);
+  padding: 0 4px;
 }
 .term {
   height: 100%;
@@ -702,6 +925,138 @@
 .field input:focus {
   border-color: var(--glass-border-hi);
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 18px rgba(56, 232, 255, 0.12);
+}
+
+/* 快速选择 chips（InputModal / SettingsModal 复用） */
+.field-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.field-chip {
+  background: rgba(120, 180, 220, 0.06);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  border-radius: 7px;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transition: all 0.18s;
+}
+.field-chip:hover {
+  border-color: var(--glass-border-hi);
+  color: var(--accent);
+}
+.field-chip.active {
+  border-color: var(--glass-border-hi);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 设置弹窗 */
+.settings-box {
+  width: 480px;
+}
+.test-result {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 9px 12px;
+  border-radius: 9px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.test-result.ok {
+  color: var(--green);
+  background: rgba(52, 232, 164, 0.08);
+  border: 1px solid rgba(52, 232, 164, 0.24);
+}
+.test-result.err {
+  color: var(--red);
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.24);
+}
+
+/* ── 侧栏 AI 能力 ── */
+.dir-toolbar {
+  display: flex;
+  padding: 2px 0 6px 6px;
+}
+.ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.16), rgba(56, 232, 255, 0.08));
+  border: 1px solid var(--glass-border-hi);
+  color: var(--accent);
+  border-radius: 7px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  transition: all 0.18s;
+}
+.ai-btn:hover {
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.28);
+}
+.ai-btn.active {
+  background: linear-gradient(180deg, rgba(56, 232, 255, 0.22), rgba(56, 232, 255, 0.1));
+  color: var(--text-bright);
+}
+.ai-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 命令解释按钮 + 气泡 */
+.explain-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  opacity: 0.5;
+  transition: all 0.18s;
+  flex-shrink: 0;
+}
+.cmd:hover .explain-btn {
+  opacity: 1;
+}
+.explain-btn:hover {
+  color: var(--accent);
+}
+.cmd-explain {
+  margin: 1px 0 4px 18px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-left: 2px solid var(--accent);
+}
+.cmd-explain.err {
+  color: var(--red);
+  background: rgba(255, 107, 107, 0.07);
+  border-color: rgba(255, 107, 107, 0.2);
+  border-left-color: var(--red);
+}
+.ai-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid rgba(56, 232, 255, 0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ai-spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
 }
 
 .orphan-row {
