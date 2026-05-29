@@ -30,6 +30,20 @@ const CATEGORY_RULES: { key: string; label: string; test: RegExp }[] = [
 ]
 const OTHER = { key: 'other', label: '其他' }
 
+// 软件流程固定顺序:启发式与 AI 分组都按此排,保证跨项目类别顺序一致。
+export const CATEGORY_ORDER = ['开发', '测试', '代码质量', '构建', '部署', '数据', '文档', '其他']
+
+function canonRank(label: string): number {
+  if (label === '其他') return 999 // 其他永远垫底
+  const i = CATEGORY_ORDER.indexOf(label)
+  return i === -1 ? 900 : i // 未知类别排在「其他」之前
+}
+
+/// 按规范软件流程顺序排序类别(AI 返回顺序随机,统一收敛到此)。
+export function sortByCanon(cats: Category[]): Category[] {
+  return [...cats].sort((a, b) => canonRank(a.label) - canonRank(b.label))
+}
+
 function categoryOf(name: string): string {
   for (const r of CATEGORY_RULES) if (r.test.test(name)) return r.key
   return OTHER.key
@@ -73,5 +87,5 @@ export function categorize(scripts: Script[]): Category[] {
     result.push({ key, label, groups, loose })
   }
 
-  return result
+  return sortByCanon(result)
 }

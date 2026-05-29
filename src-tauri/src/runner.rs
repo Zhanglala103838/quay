@@ -100,7 +100,11 @@ pub fn spawn_run(
     let sink_holder: SinkHolder = Arc::new(Mutex::new(Some(sink)));
     let exited: ExitHolder = Arc::new(Mutex::new(None));
 
-    // reader 线程:节流 ~30ms 合并 chunk → 写 ring + 推当前订阅者。
+    // reader 线程:30ms 定时器主导合并 chunk → 写 ring + 推当前订阅者。
+    // 🔴 字节上限是「内存安全阀」而非主刷新触发器:之前 4KB 会把 node/vite/构建器的
+    // MB 级突发打散成几百条 IPC 消息(每条都要 JSON 序列化 + 跨桥 + 一次 term.write),
+    // 多终端同启时主线程直接卡死。抬到 64KB → 30ms 定时器成为唯一节奏,单终端 IPC
+    // 速率封顶 ~33 条/秒;64KB 仅在「单个 30ms 窗口吐超 64KB」时兜底,防单条消息过大。
     let ring_r = ring.clone();
     let holder_r = sink_holder.clone();
     std::thread::spawn(move || {
@@ -112,7 +116,7 @@ pub fn spawn_run(
                 Ok(0) => break,
                 Ok(n) => {
                     acc.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    if last.elapsed() >= Duration::from_millis(30) || acc.len() > 4096 {
+                    if last.elapsed() >= Duration::from_millis(30) || acc.len() > 65536 {
                         flush(&holder_r, &ring_r, &mut acc);
                         last = Instant::now();
                     }

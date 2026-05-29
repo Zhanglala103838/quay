@@ -1,12 +1,20 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
+import { termRegistry, appendBuffer, flushBuffer } from '../lib/termRegistry'
 
 type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
 /// 只读 xterm(一期不接 stdin)。scrollback 5000 兜住前端内存。
 /// 直接把 write 注册进 writers ref(ref 稳定),避免回调变化导致 term 重建丢输出。
+///
+/// 性能:任意时刻只有 1 个终端可见,所以
+///   1) 仅给激活终端挂 WebGL 渲染器(切走即 dispose,绕开浏览器 ~16 个 GL 上下文上限),
+///      其余终端不渲染;WebGL 不可用时静默退回 xterm 默认 DOM 渲染器。
+///   2) 非激活终端的输出囤进 termBuffers 而非实时 write,避免看不见的终端抢占主线程
+///      解析;激活时一次性回灌。
 export function TerminalView({
   runId,
   writers,
@@ -19,6 +27,9 @@ export function TerminalView({
   const ref = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const webglRef = useRef<WebglAddon | null>(null)
+  // 给 writer 闭包读当前 active(writer 只注册一次,不能靠 prop 闭包)。
+  const activeRef = useRef(active)
 
   useEffect(() => {
     const term = new Terminal({
@@ -60,7 +71,12 @@ export function TerminalView({
     fit.fit()
     termRef.current = term
     fitRef.current = fit
-    writers.current[runId] = (s: string) => term.write(s)
+    termRegistry[runId] = term
+    // 激活终端实时写;非激活终端囤进缓冲(激活/拷贝前回灌),不抢主线程解析。
+    writers.current[runId] = (s: string) => {
+      if (activeRef.current) term.write(s)
+      else appendBuffer(runId, s)
+    }
 
     const ro = new ResizeObserver(() => {
       try {
@@ -73,30 +89,65 @@ export function TerminalView({
 
     return () => {
       ro.disconnect()
+      webglRef.current?.dispose()
+      webglRef.current = null
       term.dispose()
       termRef.current = null
       fitRef.current = null
+      delete termRegistry[runId]
       delete writers.current[runId]
     }
   }, [runId, writers])
 
-  // display:none → block 后 xterm 不会自动重绘,直到下次写入。
-  // 切回该终端(active=true)时强制 fit + refresh,立即重画已有缓冲。
+  // 激活/切走:
+  //   激活 → 挂 WebGL(若可用)+ 回灌隐藏期缓冲 + fit + refresh,立即重画。
+  //   切走 → dispose WebGL 释放 GL 上下文(隐藏终端不渲染)。
+  // display:none → block 后 xterm 不会自动重绘,直到下次写入,故激活时强制 fit+refresh。
   useEffect(() => {
-    if (!active) return
+    activeRef.current = active
     const term = termRef.current
     if (!term) return
-    // 等浏览器完成显示切换后再量尺寸
-    const id = requestAnimationFrame(() => {
+
+    if (!active) {
+      webglRef.current?.dispose()
+      webglRef.current = null
+      return
+    }
+
+    // 仅激活终端挂 WebGL;失败(WKWebView 无 WebGL2 等)静默退回 DOM 渲染器。
+    if (!webglRef.current) {
       try {
-        fitRef.current?.fit()
+        const addon = new WebglAddon()
+        addon.onContextLoss(() => {
+          addon.dispose()
+          webglRef.current = null
+        })
+        term.loadAddon(addon)
+        webglRef.current = addon
       } catch {
-        /* 忽略 */
+        /* WebGL 不可用,退回默认 DOM 渲染 */
       }
-      term.refresh(0, term.rows - 1)
+    }
+
+    let raf = 0
+    let cancelled = false
+    // 先回灌隐藏期缓冲并等解析完,再量尺寸 + 重画。
+    flushBuffer(runId).then(() => {
+      if (cancelled) return
+      raf = requestAnimationFrame(() => {
+        try {
+          fitRef.current?.fit()
+        } catch {
+          /* 忽略 */
+        }
+        term.refresh(0, term.rows - 1)
+      })
     })
-    return () => cancelAnimationFrame(id)
-  }, [active])
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
+  }, [active, runId])
 
   return <div className="term" ref={ref} />
 }
