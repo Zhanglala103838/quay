@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import { scanDir } from '../lib/ipc'
-import type { Script } from '../lib/types'
+import type { Project, Script } from '../lib/types'
 import { InputModal } from './InputModal'
 
 interface RunFn {
@@ -32,29 +32,14 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
       )}
 
       {config.projects.map((p) => (
-        <div key={p.id} className="project">
-          <div className="project-head">
-            <span className="project-name">{p.name}</span>
-            <span className="project-actions">
-              <button onClick={() => setPending({ kind: 'dir', projectId: p.id })}>+目录</button>
-              <button onClick={() => setPending({ kind: 'manual', projectId: p.id })}>+命令</button>
-              <button className="danger" onClick={() => removeProject(p.id)}>
-                ✕
-              </button>
-            </span>
-          </div>
-
-          {p.directories.map((d) => (
-            <DirNode key={d.id} path={d.path} onRun={onRun} />
-          ))}
-
-          {p.manualCommands.map((m) => (
-            <div key={m.id} className="cmd manual" onClick={() => onRun(m.label, m.cwd, m.command)}>
-              <span className="run-icon">▶</span> {m.label}
-              <span className="cmd-hint">{m.command}</span>
-            </div>
-          ))}
-        </div>
+        <ProjectNode
+          key={p.id}
+          project={p}
+          onRun={onRun}
+          onAddDir={() => setPending({ kind: 'dir', projectId: p.id })}
+          onAddManual={() => setPending({ kind: 'manual', projectId: p.id })}
+          onRemove={() => removeProject(p.id)}
+        />
       ))}
 
       {pending?.kind === 'project' && (
@@ -109,9 +94,57 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
   )
 }
 
+function ProjectNode({
+  project: p,
+  onRun,
+  onAddDir,
+  onAddManual,
+  onRemove,
+}: {
+  project: Project
+  onRun: RunFn
+  onAddDir: () => void
+  onAddManual: () => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(true)
+
+  return (
+    <div className="project">
+      <div className="project-head">
+        <span className="project-name" onClick={() => setOpen((o) => !o)}>
+          <span className="caret">{open ? '▾' : '▸'}</span> {p.name}
+        </span>
+        <span className="project-actions">
+          <button onClick={onAddDir}>+目录</button>
+          <button onClick={onAddManual}>+命令</button>
+          <button className="danger" onClick={onRemove}>
+            ✕
+          </button>
+        </span>
+      </div>
+
+      {open && (
+        <>
+          {p.directories.map((d) => (
+            <DirNode key={d.id} path={d.path} onRun={onRun} />
+          ))}
+          {p.manualCommands.map((m) => (
+            <div key={m.id} className="cmd manual" onClick={() => onRun(m.label, m.cwd, m.command)}>
+              <span className="run-icon">▶</span> {m.label}
+              <span className="cmd-hint">{m.command}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 function DirNode({ path, onRun }: { path: string; onRun: RunFn }) {
   const [scripts, setScripts] = useState<Script[]>([])
   const [warn, setWarn] = useState('')
+  const [open, setOpen] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -137,20 +170,24 @@ function DirNode({ path, onRun }: { path: string; onRun: RunFn }) {
 
   return (
     <div className="dir">
-      <div className="dir-path" title={path}>
-        📁 {dirName}
+      <div className="dir-path" title={path} onClick={() => setOpen((o) => !o)}>
+        <span className="caret">{open ? '▾' : '▸'}</span> 📁 {dirName}
       </div>
-      {warn && <div className="warn">{warn}</div>}
-      {scripts.map((s) => (
-        <div
-          key={s.name}
-          className="cmd"
-          onClick={() => onRun(`${dirName}:${s.name}`, path, `npm run ${s.name}`)}
-          title={s.command}
-        >
-          <span className="run-icon">▶</span> {s.name}
-        </div>
-      ))}
+      {open && (
+        <>
+          {warn && <div className="warn">{warn}</div>}
+          {scripts.map((s) => (
+            <div
+              key={s.name}
+              className="cmd"
+              onClick={() => onRun(`${dirName}:${s.name}`, path, `npm run ${s.name}`)}
+              title={s.command}
+            >
+              <span className="run-icon">▶</span> {s.name}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }

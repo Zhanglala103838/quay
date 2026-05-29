@@ -100,6 +100,20 @@ body {
 .project-name {
   font-weight: 600;
   color: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dir-path {
+  cursor: pointer;
+  user-select: none;
+}
+
+.caret {
+  display: inline-block;
+  width: 12px;
+  color: var(--text-dim);
+  font-size: 10px;
 }
 
 .project-actions {
