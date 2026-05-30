@@ -102,7 +102,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* 细滚动条 */
+/* 细滚动条 —— 与终端自绘滚动条(.term-scroll-thumb)统一:8px 宽、99px 圆角、accent 青色 */
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -111,11 +111,19 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(120, 180, 220, 0.14);
+  background: rgba(56, 232, 255, 0.7);
   border-radius: 99px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 180, 220, 0.28);
+  background: rgba(56, 232, 255, 0.9);
+}
+*::-webkit-scrollbar-thumb:active {
+  background: #38e8ff;
+}
+/* Firefox 兜底(WebKit 走上面) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 232, 255, 0.7) transparent;
 }
 
 /* ───────────── 关键帧 ───────────── */
