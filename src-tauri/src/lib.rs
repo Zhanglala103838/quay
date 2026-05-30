@@ -178,6 +178,17 @@ pub fn run() {
             commands::git_brief,
             commands::git_detail,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Quay");
+        .build(tauri::generate_context!())
+        .expect("error while building Quay")
+        .run(|app_handle, event| {
+            // macOS:点 Dock 图标(Reopen)→ 恢复隐藏到托盘的主窗口。
+            // 关窗口被拦成 hide(见 on_window_event),不处理 Reopen 的话 Dock 点击不会重开窗口,
+            // 只能靠托盘菜单「打开 Quay」——这正是用户遇到的现象。
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(w) = app_handle.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        });
 }
