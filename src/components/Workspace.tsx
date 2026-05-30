@@ -57,7 +57,7 @@ export function Workspace({ writers }: { writers: Writers }) {
     <div className="runtabs">
       {/* 三态(spec §4.5):git 面板打开 → 只渲染 GitPanel；否则按 hasVisible 显工具条/空态。 */}
       {activeGitPath != null ? (
-        <GitPanel />
+        <GitPanel key={activeGitPath} />
       ) : hasVisible ? (
         <WorkspaceToolbar />
       ) : (

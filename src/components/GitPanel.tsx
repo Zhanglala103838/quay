@@ -3,6 +3,7 @@ import { gitDetail } from '../lib/ipc'
 import type { GitDetail, GitFile } from '../lib/types'
 import { useStore } from '../state/store'
 import { BlurFade } from './ui/BlurFade'
+import { GitGraph } from './GitGraph'
 
 /// 行数 sentinel → 显示文本。-2 未跟踪 / -1 二进制 / 其余实际 +/-。
 function lineStat(f: GitFile) {
@@ -25,8 +26,8 @@ function statusClass(st: string) {
   return 'st-other'
 }
 
-/// 主区 git 面板：分支头 + 改动列表 + 提交历史。读 activeGitPath，
-/// useEffect 依赖 [path, tick, spin] → 开 + 聚焦 + 手动刷新都重拉。
+/// 主区 git 面板:分支头(下拉切换) + 改动列表 + 拓扑提交树。
+/// useEffect 依赖 [path, tick, spin, rev] → 开 + 聚焦 + 手动刷新 + 切分支 都重拉。
 export function GitPanel() {
   const path = useStore((s) => s.activeGitPath)
   const tick = useStore((s) => s.gitRefreshTick)
@@ -34,15 +35,17 @@ export function GitPanel() {
   const [detail, setDetail] = useState<GitDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [spin, setSpin] = useState(0) // 手动刷新触发器
+  const [rev, setRev] = useState('') // 查看哪个分支('' = 当前 HEAD)
+  const [menuOpen, setMenuOpen] = useState(false)
+  // 注:切目录时由 Workspace 的 key={activeGitPath} 整组件重挂复位 rev/menuOpen,无需 effect。
 
   useEffect(() => {
     if (!path) return
     let cancelled = false
-    // 包进 async 函数:setState 不在 effect 体内同步调用(规避 set-state-in-effect)。
     const fetchDetail = async () => {
       setLoading(true)
       try {
-        const d = await gitDetail(path)
+        const d = await gitDetail(path, rev)
         if (!cancelled) setDetail(d)
       } catch {
         if (!cancelled) setDetail(null)
@@ -54,23 +57,53 @@ export function GitPanel() {
     return () => {
       cancelled = true
     }
-  }, [path, tick, spin])
+  }, [path, tick, spin, rev])
 
   if (!path) return null
 
   const dirName = path.split('/').filter(Boolean).pop() || path
-  const branchLabel = detail
-    ? detail.detached
-      ? `游离 @ ${detail.headShort}`
-      : detail.branch
-    : ''
+  const viewing = detail?.viewing || (detail?.detached ? `游离 @ ${detail.headShort}` : detail?.branch) || ''
 
   return (
     <div className="git-panel">
       <div className="git-panel-head">
         <div className="git-panel-title">
           <span className="git-panel-repo">{dirName}</span>
-          {detail?.isRepo && <span className="git-panel-branch">⎇ {branchLabel}</span>}
+          {detail?.isRepo && (
+            <div className="git-branch-picker">
+              <button
+                className={'git-branch-btn' + (menuOpen ? ' open' : '')}
+                onClick={() => setMenuOpen((o) => !o)}
+                disabled={detail.branches.length === 0}
+                title="切换查看的分支(只读,不动工作区)"
+              >
+                <span className="gb-icon">⎇</span>
+                <span className="gb-name">{viewing}</span>
+                {detail.branches.length > 0 && <span className="gb-caret">▾</span>}
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="git-branch-backdrop" onClick={() => setMenuOpen(false)} />
+                  <div className="git-branch-menu">
+                    {detail.branches.map((b) => (
+                      <button
+                        key={b.name}
+                        className={'git-branch-item' + (b.name === viewing ? ' active' : '')}
+                        onClick={() => {
+                          setRev(b.current ? '' : b.name)
+                          setMenuOpen(false)
+                        }}
+                      >
+                        <span className="gbi-name">{b.name}</span>
+                        {b.current && <span className="gbi-cur">当前</span>}
+                        {!b.upstream && <span className="gbi-noup">未跟踪</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {detail?.hasUpstream && (detail.ahead > 0 || detail.behind > 0) && (
             <span className="git-panel-sync">
               {detail.ahead > 0 && `↑${detail.ahead}`}
@@ -119,18 +152,8 @@ export function GitPanel() {
           </section>
 
           <section className="git-section">
-            <div className="git-section-label">提交历史</div>
-            {detail.commits.length === 0 ? (
-              <div className="git-clean-hint">还没有提交</div>
-            ) : (
-              detail.commits.map((c) => (
-                <div className="git-commit-row" key={c.hash}>
-                  <span className="git-commit-hash">{c.hash}</span>
-                  <span className="git-commit-subject">{c.subject}</span>
-                  <span className="git-commit-time">{c.relTime}</span>
-                </div>
-              ))
-            )}
+            <div className="git-section-label">提交树</div>
+            <GitGraph commits={detail.commits} />
           </section>
         </div>
       )}
