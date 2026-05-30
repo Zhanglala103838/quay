@@ -3,3 +3,6 @@ dist/
 src-tauri/target/
 .DS_Store
 *.log
+
+# 本地签名凭据(勿提交)
+scripts/.env.local

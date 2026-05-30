@@ -122,6 +122,10 @@ bash scripts/build-mac.sh
 
 Quay 仍在活跃开发中，功能与界面可能变动。欢迎 issue 反馈。
 
+## 致谢
+
+Quay 在开发过程中大量借助 **[Claude Code](https://claude.com/claude-code)** 完成架构设计、实现与调试——从交互终端的 PTY 管线到原生 macOS 集成，感谢它的陪伴。🙏
+
 ---
 
 <div align="center">
@@ -177,6 +181,10 @@ bash scripts/build-mac.sh   # signed + notarized (needs your Apple Developer ID)
 ## Tech stack
 
 **Tauri 2** (Rust) · **React 19** + TypeScript + Vite + Zustand · **xterm.js 6** + WebGL · **portable-pty** (real PTY, isolated process groups) · notify-debouncer-full · DeepSeek (optional).
+
+## Acknowledgments
+
+Quay was built with heavy help from **[Claude Code](https://claude.com/claude-code)** — from the interactive-terminal PTY pipeline to the native macOS integration. Thank you. 🙏
 
 ---
 
