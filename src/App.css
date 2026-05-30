@@ -1199,6 +1199,18 @@ html.resizing .runtabs {
   font-size: 11px;
   white-space: nowrap;
 }
+.running-chip.clickable,
+.running-pop-row.clickable {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.running-chip.clickable:hover {
+  background: rgba(52, 232, 164, 0.18);
+  border-color: rgba(52, 232, 164, 0.4);
+}
+.running-pop-row.clickable:hover {
+  background: rgba(52, 232, 164, 0.1);
+}
 .chip-label {
   max-width: 160px;
   overflow: hidden;

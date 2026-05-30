@@ -17,6 +17,7 @@ export function RunningBar() {
   // selector 必须返回稳定引用,否则 zustand v5 会判定每次都变 → 无限重渲染。
   // 取 s.runs(引用稳定),在组件体内 filter。
   const runs = useStore((s) => s.runs)
+  const focusRun = useStore((s) => s.focusRun)
   const running = runs.filter((r) => r.status === 'running')
 
   // 内存:有命令在跑时 ~2s 轮询;全退出就停,不空转。
@@ -80,7 +81,12 @@ export function RunningBar() {
       {running.length > 0 && (
         <span className="running-list">
           {shown.map((r) => (
-            <span key={r.runId} className="running-chip">
+            <span
+              key={r.runId}
+              className="running-chip clickable"
+              title="跳转查看此终端"
+              onClick={() => focusRun(r.runId)}
+            >
               <span className="chip-label">{r.label}</span>
               <span className="chip-mem">{memOf(r.runId)}</span>
             </span>
@@ -100,7 +106,15 @@ export function RunningBar() {
           onMouseDown={(e) => e.stopPropagation()}
         >
           {running.map((r) => (
-            <div key={r.runId} className="running-pop-row">
+            <div
+              key={r.runId}
+              className="running-pop-row clickable"
+              title="跳转查看此终端"
+              onClick={() => {
+                focusRun(r.runId)
+                setOpenPop(false)
+              }}
+            >
               <span className="chip-label">{r.label}</span>
               <span className="chip-mem">{memOf(r.runId)}</span>
             </div>
