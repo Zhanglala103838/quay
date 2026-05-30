@@ -60,7 +60,7 @@ export function GitGraph({ commits }: { commits: GitCommit[] }) {
               cx={x(r.col)}
               cy={y(i)}
               r={isHead ? NODE_R + 1 : NODE_R}
-              fill={isHead ? laneColor(r.col) : 'var(--color-harbor-deep)'}
+              fill={isHead ? laneColor(r.col) : '#0a1018'}
               stroke={laneColor(r.col)}
               strokeWidth={1.8}
             />

@@ -1968,6 +1968,14 @@ html.resizing .runtabs {
 .git-section {
   margin-top: 18px;
 }
+/* 改动文件限高内部滚动:几百个文件也不用滑很久就能到下面的提交树 */
+.git-files-scroll {
+  max-height: 38vh;
+  overflow-y: auto;
+  /* 给滚动条留点空间,避免压到行尾 +/- 数字 */
+  padding-right: 4px;
+  margin-right: -4px;
+}
 .git-section-label {
   display: flex;
   align-items: center;

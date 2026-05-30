@@ -137,17 +137,19 @@ export function GitPanel() {
             {detail.files.length === 0 ? (
               <div className="git-clean-hint">工作区干净 ✓</div>
             ) : (
-              detail.files.map((f, i) => (
-                <BlurFade key={f.path} delay={Math.min(0.02 * i, 0.2)}>
-                  <div className="git-file-row">
-                    <span className={'git-file-status ' + statusClass(f.status)}>
-                      {f.status || '·'}
-                    </span>
-                    <span className="git-file-path">{f.path}</span>
-                    {lineStat(f)}
-                  </div>
-                </BlurFade>
-              ))
+              <div className="git-files-scroll">
+                {detail.files.map((f, i) => (
+                  <BlurFade key={f.path} delay={Math.min(0.02 * i, 0.2)}>
+                    <div className="git-file-row">
+                      <span className={'git-file-status ' + statusClass(f.status)}>
+                        {f.status || '·'}
+                      </span>
+                      <span className="git-file-path">{f.path}</span>
+                      {lineStat(f)}
+                    </div>
+                  </BlurFade>
+                ))}
+              </div>
             )}
           </section>
 
