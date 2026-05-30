@@ -40,6 +40,7 @@ export interface RunInfo {
   command: string
   status: 'running' | 'exited'
   exitCode: number | null
+  interactive: boolean
 }
 
 /// git 状态(字段对齐 Rust 的 serde rename_all="camelCase")。

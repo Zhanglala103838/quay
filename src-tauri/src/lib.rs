@@ -7,6 +7,7 @@ mod reconcile;
 mod runner;
 mod scanner;
 mod types;
+mod watcher;
 
 use tauri::menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -25,20 +26,73 @@ fn force_dark_appearance() {
     app.setAppearance(appearance.as_deref());
 }
 
-/// 开启 AppKit 原生「按背景拖动窗口」(等价 Electron 的 -webkit-app-region: drag,纯原生、零 IPC)。
-/// 背景:Tauri 的 `data-tauri-drag-region` 是 JS+IPC(每次 mousedown 调 startDragging IPC),命中
-/// 上游 bug #12597——拖完窗口后 IPC 卡几秒,导致放手即拖不动、循环。原生 movableByWindowBackground
-/// 由 AppKit 直接处理 mousedown→拖窗、不经 IPC,故免疫。代价:整个 webview 背景都可拖窗
-/// (WKWebView 无法按区域排除),故必须移除会与拖窗冲突的内容拖拽手势(如侧栏分栏条 Resizer)。
+/// 标题栏中段的原生拖拽区:一个透明 NSView 子类,在 `mouseDown:` 里调用官方 API
+/// `performWindowDragWithEvent:` 发起标准拖窗(纯原生、零 IPC,免疫上游 bug #12597)。
+/// 只铺在标题栏中段,不命中的区域(终端、侧栏、按钮等)正常收事件——xterm 自绘的拖拽选区恢复。
+///
+/// 为何不用 `mouseDownCanMoveWindow`:它依赖窗口的可拖背景判定,在 `titleBarStyle: Overlay`
+/// + 全尺寸内容视图下不可靠(实测标题栏整条拖不动);`performWindowDragWithEvent:` 与
+/// `movableByWindowBackground` 无关,显式发起,必然生效。
+/// 为何不用整窗 `movableByWindowBackground`:那会把整个 webview 背景都变成拖窗区,
+/// WKWebView 无法按区域排除,于是吞掉 xterm 的拖拽选区——正是本次要修的问题。
 #[cfg(target_os = "macos")]
-fn enable_native_window_drag(window: &tauri::WebviewWindow) {
-    use objc2_app_kit::NSWindow;
+use objc2::{define_class, MainThreadOnly};
+
+#[cfg(target_os = "macos")]
+define_class!(
+    // SAFETY: 超类 NSView 无特殊子类化要求;本类不实现 Drop,不声明 ivars。
+    #[unsafe(super(objc2_app_kit::NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "QuayTitlebarDragView"]
+    struct TitlebarDragView;
+
+    impl TitlebarDragView {
+        // 在本 view 按下即发起标准拖窗(官方 API,不经 IPC、不依赖 movableByWindowBackground)。
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, event: &objc2_app_kit::NSEvent) {
+            if let Some(win) = self.window() {
+                win.performWindowDragWithEvent(event);
+            }
+        }
+    }
+);
+
+/// 在标题栏中段铺设原生拖拽区(替代曾经的整窗 `setMovableByWindowBackground(true)`)。
+#[cfg(target_os = "macos")]
+fn install_titlebar_drag(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSAutoresizingMaskOptions, NSWindow};
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
+
+    let Some(mtm) = MainThreadMarker::new() else { return };
     let Ok(ptr) = window.ns_window() else { return };
     if ptr.is_null() {
         return;
     }
     let ns_window: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
-    ns_window.setMovableByWindowBackground(true);
+    let Some(content) = ns_window.contentView() else { return };
+
+    // 标题栏几何(与 App.css .titlebar 对齐):高 38;左侧让出交通灯(<82)+折叠按钮,
+    // 右侧让出设置按钮。中段(含居中品牌)作为拖拽区。
+    const TITLEBAR_H: f64 = 38.0;
+    const LEFT_INSET: f64 = 104.0;
+    const RIGHT_INSET: f64 = 52.0;
+    let cf = content.frame();
+    let w = (cf.size.width - LEFT_INSET - RIGHT_INSET).max(0.0);
+    // 非翻转坐标系原点在左下角,标题栏在顶部 → y = 内容高 - 标题栏高。
+    let frame = NSRect::new(
+        NSPoint::new(LEFT_INSET, cf.size.height - TITLEBAR_H),
+        NSSize::new(w, TITLEBAR_H),
+    );
+
+    let drag: Retained<TitlebarDragView> =
+        unsafe { msg_send![TitlebarDragView::alloc(mtm), initWithFrame: frame] };
+    // 宽度随窗口伸缩、顶部固定(左右内边距固定),无需手动跟踪 resize。
+    drag.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin,
+    );
+    content.addSubview(&drag);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -53,15 +107,18 @@ pub fn run() {
         }))
         // 🔔 原生通知:命令在后台跑完时提醒(前端在窗口失焦时发)
         .plugin(tauri_plugin_notification::init())
+        // 📁 原生目录/文件选择器:绑定目录时点「选择目录」拉起 Finder 选文件夹
+        .plugin(tauri_plugin_dialog::init())
         .manage(runner::Registry::default())
+        .manage(watcher::WatchRegistry::default())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
                 force_dark_appearance();
-                // 原生窗口拖动(绕开 data-tauri-drag-region 的 IPC 卡顿 #12597)。
-                // 配套:已移除侧栏分栏条拖拽,避免内容拖拽手势与原生拖窗冲突。
+                // 标题栏中段原生拖区(绕开 data-tauri-drag-region 的 IPC 卡顿 #12597,
+                // 同时不像整窗 movableByWindowBackground 那样吞掉终端的拖拽选区)。
                 if let Some(win) = app.get_webview_window("main") {
-                    enable_native_window_drag(&win);
+                    install_titlebar_drag(&win);
                 }
             }
 
@@ -162,9 +219,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan_dir,
+            commands::watch_dir,
+            commands::unwatch_dir,
             commands::get_config,
             commands::set_config,
             commands::run_command,
+            commands::write_run,
+            commands::open_in_vscode,
             commands::stop_command,
             commands::close_command,
             commands::resize_run,

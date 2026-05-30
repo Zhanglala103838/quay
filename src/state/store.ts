@@ -28,6 +28,7 @@ export interface RunState {
   status: 'running' | 'exited'
   exitCode: number | null
   projectId: string // 归属项目(由 cwd 推断);'' = 未归属
+  interactive: boolean // true = 可输入交互终端(zsh -li);false = 只读命令监控
 }
 
 /// 由 run 的 cwd 反查它属于哪个项目(匹配目录路径或手动命令 cwd)。
@@ -54,6 +55,13 @@ interface Store {
   addDirectory: (projectId: string, path: string) => void
   removeDirectory: (projectId: string, dirId: string) => void
   addManualCommand: (projectId: string, label: string, cwd: string, command: string) => void
+  updateManualCommand: (
+    projectId: string,
+    cmdId: string,
+    label: string,
+    cwd: string,
+    command: string,
+  ) => void
   removeManualCommand: (projectId: string, cmdId: string) => void
   removeProject: (id: string) => void
   setActiveProject: (id: string) => void
@@ -122,6 +130,17 @@ export const useStore = create<Store>((set, get) => ({
     c.projects
       .find((p) => p.id === pid)
       ?.manualCommands.push({ id: uuid(), label, cwd, command, long: true })
+    set({ config: c })
+    get().persist()
+  },
+  updateManualCommand: (pid, cmdId, label, cwd, command) => {
+    const c = structuredClone(get().config)
+    const m = c.projects.find((p) => p.id === pid)?.manualCommands.find((x) => x.id === cmdId)
+    if (m) {
+      m.label = label
+      m.cwd = cwd
+      m.command = command
+    }
     set({ config: c })
     get().persist()
   },

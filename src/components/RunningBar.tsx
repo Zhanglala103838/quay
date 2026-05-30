@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useStore } from '../state/store'
 import { runsMemory } from '../lib/ipc'
 import type { MemReport } from '../lib/types'
@@ -11,7 +12,7 @@ function fmtMem(b: number): string {
   return mb < 1000 ? `${Math.round(mb)}MB` : `${(mb / 1024).toFixed(1)}GB`
 }
 
-const VISIBLE = 2 // 直接铺在 bar 上的 chip 数,其余折叠进 +N
+const VISIBLE = 3 // 直接铺在 bar 上的 chip 数,其余折叠进 +N
 
 export function RunningBar() {
   // selector 必须返回稳定引用,否则 zustand v5 会判定每次都变 → 无限重渲染。
@@ -46,15 +47,22 @@ export function RunningBar() {
   const [openPop, setOpenPop] = useState(false)
   const [popPos, setPopPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!openPop) return
-    const close = () => setOpenPop(false)
-    // 捕获阶段:点任意处(含浮层外)即关
+    // 捕获阶段:点浮层/触发器之外即关。必须放行浮层内的 mousedown,否则它先于行 onClick 触发、
+    // 把浮层卸载掉 → 行点击(跳转终端)永远落空;放行触发器避免「关了又被 toggle 开」的抖动。
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (popRef.current?.contains(t) || moreRef.current?.contains(t)) return
+      setOpenPop(false)
+    }
+    const onResize = () => setOpenPop(false)
     window.addEventListener('mousedown', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('mousedown', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('resize', onResize)
     }
   }, [openPop])
   const shown = running.slice(0, VISIBLE)
@@ -99,28 +107,32 @@ export function RunningBar() {
         </span>
       )}
 
-      {openPop && (
-        <div
-          className="running-pop"
-          style={{ left: popPos.left, bottom: popPos.bottom }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {running.map((r) => (
-            <div
-              key={r.runId}
-              className="running-pop-row clickable"
-              title="跳转查看此终端"
-              onClick={() => {
-                focusRun(r.runId)
-                setOpenPop(false)
-              }}
-            >
-              <span className="chip-label">{r.label}</span>
-              <span className="chip-mem">{memOf(r.runId)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* portal 到 body:.runningbar 有 backdrop-filter(令后代 fixed 改相对它定位)+ overflow:hidden,
+          内联渲染会把浮层错位并裁掉。portal 后 fixed 回到视口坐标系,与 popPos(视口测量值)对齐。 */}
+      {openPop &&
+        createPortal(
+          <div
+            ref={popRef}
+            className="running-pop"
+            style={{ left: popPos.left, bottom: popPos.bottom }}
+          >
+            {running.map((r) => (
+              <div
+                key={r.runId}
+                className="running-pop-row clickable"
+                title="跳转查看此终端"
+                onClick={() => {
+                  focusRun(r.runId)
+                  setOpenPop(false)
+                }}
+              >
+                <span className="chip-label">{r.label}</span>
+                <span className="chip-mem">{memOf(r.runId)}</span>
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
-import { scanDir } from '../lib/ipc'
-import type { Script } from '../lib/types'
+import { scanDir, watchDir, unwatchDir } from '../lib/ipc'
+import { listen } from '@tauri-apps/api/event'
+import type { Script, ScanResult, CommandEntry } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { smartGroup, explainCommand } from '../lib/deepseek'
@@ -20,15 +21,25 @@ type Pending =
   | { kind: 'project' }
   | { kind: 'dir'; projectId: string }
   | { kind: 'manual'; projectId: string }
+  | { kind: 'manual-edit'; projectId: string; cmd: CommandEntry }
   | null
 
-export function Sidebar({ onRun }: { onRun: RunFn }) {
+export function Sidebar({
+  onRun,
+  onOpenTerminal,
+  onOpenVscode,
+}: {
+  onRun: RunFn
+  onOpenTerminal: (cwd: string) => void
+  onOpenVscode: (path: string) => void
+}) {
   const {
     config,
     addProject,
     addDirectory,
     removeDirectory,
     addManualCommand,
+    updateManualCommand,
     removeManualCommand,
     removeProject,
     setActiveProject,
@@ -115,6 +126,8 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 path={d.path}
                 onRun={onRun}
                 onView={viewRun}
+                onOpenTerminal={onOpenTerminal}
+                onOpenVscode={onOpenVscode}
                 runningLabels={runningLabels}
                 onRemove={() =>
                   askConfirm({
@@ -138,6 +151,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                     running={runningLabels.has(m.label)}
                     onRun={() => onRun(m.label, m.cwd, m.command)}
                     onView={() => viewRun(m.label)}
+                    onEdit={() => setPending({ kind: 'manual-edit', projectId: p.id, cmd: m })}
                     onRemove={() =>
                       askConfirm({
                         title: `删除手动命令「${m.label}」?`,
@@ -173,6 +187,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
               key: 'path',
               label: '目录绝对路径(含 package.json)',
               placeholder: '/Users/you/code/your-project',
+              pickDir: true,
             },
           ]}
           onSubmit={(v) => {
@@ -183,11 +198,16 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
         />
       )}
 
-      {pending?.kind === 'manual' && (
+      {(pending?.kind === 'manual' || pending?.kind === 'manual-edit') && (
         <InputModal
-          title="新增手动命令"
+          title={pending.kind === 'manual-edit' ? '编辑手动命令' : '新增手动命令'}
           fields={[
-            { key: 'command', label: '命令', placeholder: '如 php think run' },
+            {
+              key: 'command',
+              label: '命令',
+              placeholder: '如 php think run',
+              initial: pending.kind === 'manual-edit' ? pending.cmd.command : undefined,
+            },
             {
               key: 'cwd',
               label: '工作目录 cwd(可选已绑目录或自定义)',
@@ -196,15 +216,26 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
               options: config.projects
                 .find((p) => p.id === pending.projectId)
                 ?.directories.map((d) => d.path),
+              initial: pending.kind === 'manual-edit' ? pending.cmd.cwd : undefined,
             },
             // 标签默认跟随命令自动填充(可改),让用户一眼知道这条是什么
-            { key: 'label', label: '标签', placeholder: '默认跟随命令', mirrorOf: 'command' },
+            {
+              key: 'label',
+              label: '标签',
+              placeholder: '默认跟随命令',
+              mirrorOf: 'command',
+              initial: pending.kind === 'manual-edit' ? pending.cmd.label : undefined,
+            },
           ]}
           onSubmit={(v) => {
             const cmd = v.command.trim()
             const cwd = v.cwd.trim()
             if (!cmd || !cwd) return
-            addManualCommand(pending.projectId, v.label.trim() || cmd, cwd, cmd)
+            if (pending.kind === 'manual-edit') {
+              updateManualCommand(pending.projectId, pending.cmd.id, v.label.trim() || cmd, cwd, cmd)
+            } else {
+              addManualCommand(pending.projectId, v.label.trim() || cmd, cwd, cmd)
+            }
             setPending(null)
           }}
           onCancel={() => setPending(null)}
@@ -221,6 +252,7 @@ function CmdRow({
   running,
   onRun,
   onView,
+  onEdit,
   onRemove,
 }: {
   display: string
@@ -228,6 +260,7 @@ function CmdRow({
   running: boolean
   onRun: () => void
   onView?: () => void
+  onEdit?: () => void
   onRemove?: () => void
 }) {
   const configured = useSettings((s) => s.configured)
@@ -236,6 +269,16 @@ function CmdRow({
   )
   // 单/双击区分:运行中 → 单击查看(延迟 220ms 等可能的第二击)、双击再跑一个;未运行 → 单击直接运行。
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 同一条命令的「真正启动」冷却窗:手快误双击会落在窗内被吞掉,只开一个;
+  // 而「先启动 → 进入运行中 → 再双击加开」这种有意连开,间隔天然 > 窗口,不受影响。
+  // 不依赖 running prop 何时翻转,所以 spawn 再快也稳。
+  const lastRunAt = useRef(0)
+  const fireRun = () => {
+    const now = Date.now()
+    if (now - lastRunAt.current < 350) return // 冷却中:吞掉意外的第二次启动
+    lastRunAt.current = now
+    onRun()
+  }
   useEffect(
     () => () => {
       if (clickTimer.current) clearTimeout(clickTimer.current)
@@ -244,7 +287,7 @@ function CmdRow({
   )
   const handleClick = () => {
     if (!running) {
-      onRun()
+      fireRun()
       return
     }
     if (clickTimer.current) return // 第二次 click(双击的一部分)忽略,交给 onDoubleClick
@@ -258,7 +301,7 @@ function CmdRow({
       clearTimeout(clickTimer.current)
       clickTimer.current = null
     }
-    onRun()
+    fireRun()
   }
 
   const toggleExplain = (e: React.MouseEvent) => {
@@ -290,6 +333,19 @@ function CmdRow({
         {configured && (
           <button className="explain-btn" aria-label="AI 解释这条命令" onClick={toggleExplain}>
             {explain ? '×' : '?'}
+          </button>
+        )}
+        {onEdit && (
+          <button
+            className="edit-btn"
+            aria-label="编辑这条命令"
+            title="编辑命令"
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}
+          >
+            ✎
           </button>
         )}
         {onRemove && <DeleteButton title="删除此命令" floatRight onClick={onRemove} />}
@@ -360,12 +416,16 @@ function DirNode({
   path,
   onRun,
   onView,
+  onOpenTerminal,
+  onOpenVscode,
   runningLabels,
   onRemove,
 }: {
   path: string
   onRun: RunFn
   onView: (label: string) => void
+  onOpenTerminal: (cwd: string) => void
+  onOpenVscode: (path: string) => void
   runningLabels: Set<string>
   onRemove?: () => void
 }) {
@@ -387,9 +447,11 @@ function DirNode({
     })
 
   useEffect(() => {
-    let cancelled = false
-    scanDir(path).then((r) => {
-      if (cancelled) return
+    let active = true
+    let unlisten: (() => void) | undefined
+
+    const applyScan = (r: ScanResult) => {
+      if (!active) return
       setScripts(r.scripts)
       if (!r.dirExists) {
         setWarn('目录不存在或无访问权限(检查 macOS 系统设置 → 隐私与安全性 → 文件和文件夹 / 完整磁盘访问)')
@@ -400,9 +462,25 @@ function DirNode({
       } else {
         setWarn('')
       }
+    }
+
+    // 初始扫一次
+    scanDir(path).then(applyScan)
+
+    // 监听该目录 package.json 变更:后端防抖后 emit pkg-changed → 重扫。
+    // 事件是全局广播,按 payload.path 匹配自己,避免多目录互相串扰。
+    watchDir(path).catch(() => {})
+    listen<{ path: string }>('pkg-changed', (e) => {
+      if (e.payload.path === path) scanDir(path).then(applyScan)
+    }).then((u) => {
+      if (active) unlisten = u
+      else u() // 已卸载:listen 的 Promise 晚于 cleanup 解析时,立即注销避免泄漏
     })
+
     return () => {
-      cancelled = true
+      active = false
+      unlisten?.()
+      unwatchDir(path).catch(() => {})
     }
   }, [path])
 
@@ -440,7 +518,28 @@ function DirNode({
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
         {dirRunning > 0 && <span className="activity-dot" />}
-        {onRemove && <DeleteButton title="删除此目录绑定" floatRight onClick={onRemove} />}
+        {/* 右侧操作区:开终端 / VSCode / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
+        <span className="dir-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="dir-act-btn"
+            aria-label="在此目录打开终端"
+            title="在此目录打开终端"
+            onClick={() => onOpenTerminal(path)}
+          >
+            <TerminalIcon />
+          </button>
+          <button
+            type="button"
+            className="dir-act-btn"
+            aria-label="用 VSCode 打开此目录"
+            title="用 VSCode 打开此目录"
+            onClick={() => onOpenVscode(path)}
+          >
+            <VscodeIcon />
+          </button>
+          {onRemove && <DeleteButton title="删除此目录绑定" onClick={onRemove} />}
+        </span>
       </div>
 
       {/* git chip 单独一行(缩进对齐目录名),避免和目录名挤一行把名字压折 */}
@@ -498,5 +597,35 @@ function DirNode({
         </div>
       )}
     </div>
+  )
+}
+
+/// 终端图标(lucide square-terminal 风格,描边)。
+function TerminalIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m7 9 3 3-3 3" />
+      <path d="M13 15h4" />
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+    </svg>
+  )
+}
+
+/// VSCode 官方 logo(单色填充 currentColor)。
+function VscodeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
+    </svg>
   )
 }

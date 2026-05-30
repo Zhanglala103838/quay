@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BorderBeam } from './ui/BorderBeam'
+import { pickDirectory } from '../lib/ipc'
 
 export interface Field {
   key: string
@@ -13,6 +14,8 @@ export interface Field {
   mirrorOf?: string
   /// 最大输入字符数(如项目名限 6 字)。
   maxLength?: number
+  /// 在输入框旁加「选择目录」按钮,拉起原生 Finder 选文件夹(仍可手输)。
+  pickDir?: boolean
 }
 
 /// 应用内输入弹窗。替代 window.prompt —— 后者在 Tauri WKWebView 不工作。
@@ -30,9 +33,27 @@ export function InputModal({
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, f.initial ?? ''])),
   )
-  // 已被用户手动编辑过的字段(镜像字段一旦手改就解除跟随)
-  const [dirty, setDirty] = useState<Record<string, boolean>>({})
+  // 已被用户手动编辑过的字段(镜像字段一旦手改就解除跟随)。
+  // 带 initial 值的字段(如编辑场景预填的标签)视为已脏,免得镜像源覆盖掉它本身的值。
+  const [dirty, setDirty] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(fields.filter((f) => f.initial != null).map((f) => [f.key, true])),
+  )
   const firstRef = useRef<HTMLInputElement>(null)
+  // 正在用输入法合成(打拼音/假名)的字段 key。合成期间不按 maxLength 截断,
+  // 否则中间态拼音字母会占满名额、字还没上屏就被挡住。
+  const composingKey = useRef<string | null>(null)
+
+  // 按「字符数」(Array.from 正确数 emoji/CJK)截到 maxLength;无 maxLength 原样返回。
+  const clamp = (f: Field, v: string) =>
+    f.maxLength ? Array.from(v).slice(0, f.maxLength).join('') : v
+
+  // 「选择目录」:拉起原生 Finder,选中后填入(取消则不动)。
+  const pick = async (f: Field) => {
+    const p = await pickDirectory()
+    if (!p) return
+    setDirty((d) => ({ ...d, [f.key]: true }))
+    setValues((vs) => ({ ...vs, [f.key]: p }))
+  }
 
   useEffect(() => {
     firstRef.current?.focus()
@@ -61,22 +82,43 @@ export function InputModal({
         {fields.map((f, i) => (
           <div key={f.key} className="field">
             <label>{f.label}</label>
+            <div className="field-input-row">
             <input
               ref={i === 0 ? firstRef : undefined}
               value={shown(f)}
               placeholder={f.placeholder}
-              maxLength={f.maxLength}
               list={f.options?.length ? `dl-${f.key}` : undefined}
+              onCompositionStart={() => {
+                composingKey.current = f.key
+              }}
+              onCompositionEnd={(e) => {
+                composingKey.current = null
+                // 合成结束(字已上屏)再按字数截断这一次的最终值。
+                const v = clamp(f, e.currentTarget.value)
+                setDirty((d) => ({ ...d, [f.key]: true }))
+                setValues((vs) => ({ ...vs, [f.key]: v }))
+              }}
               onChange={(e) => {
-                const v = f.maxLength ? Array.from(e.target.value).slice(0, f.maxLength).join('') : e.target.value
+                // 合成中:原样存(不截断、也不改变受控 value,免得打断输入法);
+                // 普通输入/合成结束后的 change:按字数截断。
+                const composing = composingKey.current === f.key
+                const v = composing ? e.target.value : clamp(f, e.target.value)
                 setDirty((d) => ({ ...d, [f.key]: true }))
                 setValues((vs) => ({ ...vs, [f.key]: v }))
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submit()
+                // 不绑 Enter 提交:Enter 全交给输入法(确认候选词)/换行,提交只走「确定」按钮,
+                // 彻底避免输入法确认时误触发提交。仅保留 Esc 取消;合成中的 Esc 归输入法、不关弹窗。
+                if (e.nativeEvent.isComposing || composingKey.current === f.key) return
                 if (e.key === 'Escape') onCancel()
               }}
             />
+            {f.pickDir ? (
+              <button type="button" className="field-pick-btn" onClick={() => pick(f)}>
+                选择目录
+              </button>
+            ) : null}
+            </div>
             {f.options?.length ? (
               <datalist id={`dl-${f.key}`}>
                 {f.options.map((o) => (

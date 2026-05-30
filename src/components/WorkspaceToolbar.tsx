@@ -1,4 +1,5 @@
 import { useStore } from '../state/store'
+import { closeCommand } from '../lib/ipc'
 import { pageCount as calcPageCount, type Layout } from '../lib/paging'
 
 const LAYOUTS: { n: Layout; label: string }[] = [
@@ -10,24 +11,43 @@ const LAYOUTS: { n: Layout; label: string }[] = [
 /// 工作区顶部工具条:左=布局分段切换;右=翻页器。
 /// 翻页器:pageCount≤8 显示可点击页点(随机跳转);>8 降级为数字 n/N 避免点墙。
 export function WorkspaceToolbar() {
-  const { runs, activeProjectId, layout, setLayout, currentPage, setPage } = useStore()
+  const { runs, activeProjectId, layout, setLayout, currentPage, setPage, closeRun } = useStore()
   const visible = runs.filter(
     (r) => !activeProjectId || r.projectId === activeProjectId || !r.projectId,
   )
   const pages = calcPageCount(visible.length, layout)
+  // 只挑「已结束」的终端(status==='exited'),进行中的绝不动。
+  const exited = visible.filter((r) => r.status === 'exited')
+  const closeExited = () => {
+    exited.forEach((r) => {
+      closeCommand(r.runId).catch(() => {}) // 释放后端 run 资源
+      closeRun(r.runId) // 从工作区移除该格
+    })
+  }
 
   return (
     <div className="ws-toolbar">
-      <div className="ws-layouts">
-        {LAYOUTS.map((l) => (
+      <div className="ws-toolbar-left">
+        <div className="ws-layouts">
+          {LAYOUTS.map((l) => (
+            <button
+              key={l.n}
+              className={'ws-layout-btn' + (layout === l.n ? ' active' : '')}
+              onClick={() => setLayout(l.n)}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+        {exited.length > 0 && (
           <button
-            key={l.n}
-            className={'ws-layout-btn' + (layout === l.n ? ' active' : '')}
-            onClick={() => setLayout(l.n)}
+            className="ws-clear-exited"
+            title="关闭所有已结束的终端(进行中的不动)"
+            onClick={closeExited}
           >
-            {l.label}
+            关闭已结束 {exited.length}
           </button>
-        ))}
+        )}
       </div>
       {pages > 1 && (
         <div className="ws-pager">

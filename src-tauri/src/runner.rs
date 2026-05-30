@@ -3,9 +3,10 @@ use crate::ledger::{self, LedgerEntry};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -32,6 +33,10 @@ pub struct RunHandle {
     pub killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     // 持有 master 保持 PTY 开启(drop 即触发 reader EOF);并用于 resize_run 调整 PTY 尺寸。
     pub master: Box<dyn portable_pty::MasterPty + Send>,
+    // 交互终端(zsh -li)的 stdin 写入口;只读 run 也持有(写入对其无副作用,简化结构)。
+    pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    // true = 交互 shell(接 stdin、PTY 跟随显示宽度);false = 只读监控(一期命令)。
+    pub interactive: bool,
     pub ring: Arc<Mutex<VecDeque<String>>>,
     pub sink: SinkHolder,
     pub exited: ExitHolder,
@@ -49,6 +54,7 @@ pub struct RunInfo {
     pub command: String,
     pub status: String, // "running" | "exited"
     pub exit_code: Option<i32>,
+    pub interactive: bool,
 }
 
 const RING_MAX: usize = 5000;
@@ -61,6 +67,7 @@ pub fn spawn_run(
     label: String,
     cwd: String,
     command: String,
+    interactive: bool,
     sink: Sink,
 ) -> Result<u32, String> {
     let pty = native_pty_system();
@@ -73,9 +80,15 @@ pub fn spawn_run(
         })
         .map_err(|e| e.to_string())?;
 
-    // 经登录 shell 跑命令,继承 PATH;PTY 已让多数工具开色,env 兜底。
+    // 经登录 shell 跑;继承 PATH;PTY 已让多数工具开色,env 兜底。
+    // interactive=true → 起一个交互登录 shell(zsh -li,接 stdin),用户在 App 内直接打字;
+    // false → 一期只读监控,登录 shell 跑指定 command(zsh -lc <command>)后退出。
     let mut cmd = CommandBuilder::new("/bin/zsh");
-    cmd.args(["-lc", &command]);
+    if interactive {
+        cmd.args(["-li"]);
+    } else {
+        cmd.args(["-lc", &command]);
+    }
     cmd.cwd(&cwd);
     cmd.env("FORCE_COLOR", "1");
     cmd.env("CLICOLOR_FORCE", "1");
@@ -95,37 +108,60 @@ pub fn spawn_run(
     };
     let killer = child.clone_killer();
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    // stdin 写入口:交互终端用它把键盘输入送进 PTY。take_writer 复制 fd,不影响 master 持有/resize。
+    let writer: Arc<Mutex<Box<dyn Write + Send>>> =
+        Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
 
     let ring = Arc::new(Mutex::new(VecDeque::<String>::new()));
     let sink_holder: SinkHolder = Arc::new(Mutex::new(Some(sink)));
     let exited: ExitHolder = Arc::new(Mutex::new(None));
 
-    // reader 线程:30ms 定时器主导合并 chunk → 写 ring + 推当前订阅者。
-    // 🔴 字节上限是「内存安全阀」而非主刷新触发器:之前 4KB 会把 node/vite/构建器的
-    // MB 级突发打散成几百条 IPC 消息(每条都要 JSON 序列化 + 跨桥 + 一次 term.write),
-    // 多终端同启时主线程直接卡死。抬到 64KB → 30ms 定时器成为唯一节奏,单终端 IPC
-    // 速率封顶 ~33 条/秒;64KB 仅在「单个 30ms 窗口吐超 64KB」时兜底,防单条消息过大。
+    // 输出管线 = reader 线程(阻塞读 + 追加共享缓冲)+ flusher 线程(真·30ms 定时器,抽干缓冲)。
+    // 🔴 必须用独立定时器线程,不能把节流写进 read() 返回后的检查里:read() 在交互 shell 打完
+    //    prompt 后会阻塞等输入 → 那个检查永不触发 → prompt 卡在缓冲里,直到下次有输出(用户打字回显)
+    //    或进程退出(EOF)才发出 —— 表现为「交互终端一直空白,打字才显出 prompt」。定时器线程与
+    //    read() 是否阻塞完全无关,空闲时也能把尾巴(prompt)按 30ms 节奏推出去。
+    // 🔴 字节上限(64KB)是「内存安全阀」:reader 端单批超限立即抽干,防 MB 级突发在 30ms 窗口内
+    //    把缓冲撑大;节奏仍由 30ms 定时器主导,单终端 IPC ~33 条/秒。两处抽干都走 drain()(持 acc 锁
+    //    完成 ring+sink),保证多线程发送顺序与产生顺序一致。
+    let acc: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let reading = Arc::new(AtomicBool::new(true));
+
+    let acc_r = acc.clone();
     let ring_r = ring.clone();
     let holder_r = sink_holder.clone();
+    let reading_r = reading.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
-        let mut acc = String::new();
-        let mut last = Instant::now();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    acc.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    if last.elapsed() >= Duration::from_millis(30) || acc.len() > 65536 {
-                        flush(&holder_r, &ring_r, &mut acc);
-                        last = Instant::now();
+                    let over = {
+                        let mut a = acc_r.lock().unwrap();
+                        a.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        a.len() > 65536
+                    };
+                    if over {
+                        drain(&acc_r, &holder_r, &ring_r); // 内存安全阀:超限立即抽干
                     }
                 }
                 Err(_) => break,
             }
         }
-        if !acc.is_empty() {
-            flush(&holder_r, &ring_r, &mut acc);
+        reading_r.store(false, Ordering::SeqCst); // 通知 flusher:已 EOF,抽空后退出
+    });
+
+    let acc_f = acc.clone();
+    let ring_f = ring.clone();
+    let holder_f = sink_holder.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(30));
+        drain(&acc_f, &holder_f, &ring_f);
+        // reader 已 EOF:再抽一次兜住末批(EOF 前最后一段),然后退出本线程。
+        if !reading.load(Ordering::SeqCst) {
+            drain(&acc_f, &holder_f, &ring_f);
+            break;
         }
     });
 
@@ -166,6 +202,8 @@ pub fn spawn_run(
             command,
             killer,
             master: pair.master,
+            writer,
+            interactive,
             ring,
             sink: sink_holder,
             exited,
@@ -174,9 +212,27 @@ pub fn spawn_run(
     Ok(pid)
 }
 
-/// 锁序固定:先 ring 后 sink(与 attach 一致),防死锁。
-fn flush(holder: &SinkHolder, ring: &Arc<Mutex<VecDeque<String>>>, acc: &mut String) {
-    let chunk = std::mem::take(acc);
+/// 把数据写进某 run 的 PTY stdin(交互终端的键盘输入)。run 已退出/不存在时静默忽略。
+pub fn write_run(reg: &Registry, run_id: &str, data: &str) -> Result<(), String> {
+    let map = reg.0.lock().unwrap();
+    if let Some(h) = map.get(run_id) {
+        let mut w = h.writer.lock().unwrap();
+        w.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+        w.flush().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 抽干共享缓冲 acc → 写 ring + 推当前订阅者。空则直接返回。
+/// 🔴 全程持 acc 锁完成 ring+sink:reader(64KB 安全阀)与 flusher(30ms 定时器)都调本函数,
+///    持 acc 锁串行化,保证两线程的发送顺序与产生顺序一致(否则可能后产生的批先发出)。
+/// 锁序固定:acc → ring → sink(attach 只取 ring→sink,从不取 acc,故无死锁)。
+fn drain(acc: &Arc<Mutex<String>>, holder: &SinkHolder, ring: &Arc<Mutex<VecDeque<String>>>) {
+    let mut a = acc.lock().unwrap();
+    if a.is_empty() {
+        return;
+    }
+    let chunk = std::mem::take(&mut *a);
     {
         let mut r = ring.lock().unwrap();
         for line in chunk.split_inclusive('\n') {
@@ -286,6 +342,7 @@ pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {
                 command: h.command.clone(),
                 status: if ex.is_some() { "exited" } else { "running" }.to_string(),
                 exit_code: ex.flatten(),
+                interactive: h.interactive,
             }
         })
         .collect()
@@ -365,6 +422,7 @@ mod tests {
             "t".into(),
             "/tmp".into(),
             "echo QUAY_HELLO; sleep 30".into(),
+            false,
             sink,
         )
         .expect("spawn");
@@ -403,6 +461,7 @@ mod tests {
             "t".into(),
             "/tmp".into(),
             "echo QUAY_REPLAY; sleep 30".into(),
+            false,
             dummy,
         )
         .expect("spawn");

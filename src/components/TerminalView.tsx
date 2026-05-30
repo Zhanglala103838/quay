@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { termRegistry, appendBuffer, flushBuffer } from '../lib/termRegistry'
+import { writeRun, resizeRun } from '../lib/ipc'
 import { useSettings } from '../state/settings'
 import { useStore } from '../state/store'
 import { probeGpuRenderer } from '../lib/gpuProbe'
@@ -27,10 +28,13 @@ export function TerminalView({
   runId,
   writers,
   active,
+  interactive = false,
 }: {
   runId: string
   writers: Writers
   active: boolean
+  // true = 可输入终端:接键盘(onData→PTY stdin)、PTY 列随显示宽度同步、显示光标。
+  interactive?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -118,6 +122,9 @@ export function TerminalView({
       return // 容器瞬时 0 尺寸,忽略
     }
     if (wasAtBottom) term.scrollToBottom()
+    // 交互终端:把真实列/行同步给 PTY(发 SIGWINCH),让 shell/vim/htop 按显示宽度排版。
+    // 只读监控故意不同步(PTY 保持 120 列,避免给 \r 进度条 TUI 反复 SIGWINCH 刷爆 scrollback)。
+    if (interactive) resizeRun(runId, term.cols, term.rows)
     // 刚 fit 完布局稳定:量一次轨道高度缓存 + 刷新自绘滚动条 thumb。
     const track = scrollRef.current
     if (track) trackHRef.current = track.clientHeight
@@ -135,9 +142,10 @@ export function TerminalView({
       fontFamily: termStack(r0.termLatin, r0.termCJK),
       letterSpacing: 0,
       lineHeight: 1.25,
-      convertEol: true,
-      cursorBlink: false,
-      disableStdin: true,
+      // 交互终端关 convertEol(shell 自发 \r\n,开了会双换行);只读监控保留(兜底裸 \n)。
+      convertEol: !interactive,
+      cursorBlink: interactive,
+      disableStdin: !interactive,
       allowTransparency: true,
       theme: {
         background: 'rgba(0, 0, 0, 0)',
@@ -167,6 +175,20 @@ export function TerminalView({
     term.open(ref.current!)
     termRef.current = term
     fitRef.current = fit
+    // 拖选后复制选区:xterm 6 不内建此绑定,自行处理——有选区时写剪贴板并吞掉,无选区放行。
+    // 🔴 交互终端只认 Cmd+C 作复制:Ctrl+C 必须放行去送 SIGINT(中断前台进程),绝不能被复制吞掉;
+    //    只读终端无 stdin 语义,Ctrl/Cmd+C 都可作复制。
+    term.attachCustomKeyEventHandler((e) => {
+      const copyChord = interactive ? e.metaKey : e.metaKey || e.ctrlKey
+      if (e.type === 'keydown' && copyChord && (e.key === 'c' || e.key === 'C')) {
+        const sel = term.getSelection()
+        if (sel) {
+          navigator.clipboard.writeText(sel).catch(() => {})
+          return false
+        }
+      }
+      return true
+    })
     // 统一走 fitAndSync:fit 后把真实列/行同步给 PTY。
     const fitSafely = () => fitAndSync.current()
     // 不在挂载帧同步 fit:网格里格子此刻可能还没拿到最终宽度,量错列数后——因为 fit 只改
@@ -177,9 +199,19 @@ export function TerminalView({
     termRegistry[runId] = term
     // 激活终端实时写;非激活终端囤进缓冲(激活/拷贝前回灌),不抢主线程解析。
     writers.current[runId] = (s: string) => {
-      if (activeRef.current) term.write(s)
-      else appendBuffer(runId, s)
+      if (!activeRef.current) {
+        appendBuffer(runId, s)
+        return
+      }
+      // 交互终端:打完 prompt 即静默,没有后续输出来自愈渲染;WebGL 偶发丢首帧 → 一直空白
+      // 到下次按键才补画。故每段输出「解析完成」回调里强制 refresh 一次(交互输出量小,代价可忽略)。
+      // 只读监控是高频流,后续 chunk 天然自愈,不加这层开销。
+      if (interactive) term.write(s, () => term.refresh(0, term.rows - 1))
+      else term.write(s)
     }
+    // 通知 App:本 run 的 writer 已就绪,立即回灌挂载前缓存的早期输出(交互 shell 的首个 prompt
+    // 常早于挂载到达,卡在 App.pending;静默 shell 无后续输出触发懒回灌 → 不主动回灌就一直空白)。
+    window.dispatchEvent(new CustomEvent('quay:writer-ready', { detail: runId }))
 
     const ro = new ResizeObserver(() => {
       // 侧栏拖拽期间(html.resizing)跳过 fit:每帧 fit×多格(+WebGL)会卡;松手由
@@ -198,7 +230,11 @@ export function TerminalView({
     const dScroll = term.onScroll(sb)
     const dRender = term.onRender(sb)
 
+    // 交互终端:键盘输入 → PTY stdin。只读终端 disableStdin,onData 不触发,故仅交互时挂。
+    const dData = interactive ? term.onData((d) => writeRun(runId, d)) : null
+
     return () => {
+      dData?.dispose()
       ro.disconnect()
       window.removeEventListener('quay:resize-end', onResizeEnd)
       dScroll.dispose()
@@ -211,7 +247,8 @@ export function TerminalView({
       delete termRegistry[runId]
       delete writers.current[runId]
     }
-  }, [runId, writers])
+    // interactive 在 run 生命周期内恒定(只读/交互不会互转),进 deps 仅为满足 lint,不会触发重建。
+  }, [runId, writers, interactive])
 
   // 字体设置变化:实时套用到已存在的终端(不重建),预加载字体就绪后改 options + 重排 + 重绘。
   useEffect(() => {
@@ -245,7 +282,11 @@ export function TerminalView({
       return
     }
 
-    if (gpuAccel) {
+    // 🔴 交互终端不挂 WebGL:xterm WebGL addon 有「首帧到用户交互前不渲染」的已知回归
+    //   (xtermjs/xterm.js#4665、Eugeny/tabby#9823)——交互 shell 打完 prompt 即静默,
+    //   首帧空白后无输出自愈 → 一直黑屏到打字。社区公认解法就是退回 canvas/DOM 渲染器。
+    //   交互终端是人速低频输入,本就无需 WebGL 的吞吐;只读高频日志流仍用 WebGL 提速。
+    if (gpuAccel && !interactive) {
       // 仅激活终端挂 WebGL;失败(WKWebView 无 WebGL2 等)退回 DOM 渲染器并告警(不再静默)。
       if (!webglRef.current) {
         try {
@@ -275,6 +316,8 @@ export function TerminalView({
     raf = requestAnimationFrame(() => {
       if (cancelled) return
       fitAndSync.current() // fit + 同步 PTY 尺寸(此刻格子已 display:flex,量到正确宽度)
+      // 交互终端:激活即聚焦,用户可直接打字(同时给静默的 prompt 补一次绘制契机)。
+      if (interactive) term.focus()
       flushBuffer(runId).then(() => {
         if (cancelled) return
         term.refresh(0, term.rows - 1)
@@ -284,7 +327,7 @@ export function TerminalView({
       cancelled = true
       cancelAnimationFrame(raf)
     }
-  }, [active, runId, gpuAccel])
+  }, [active, runId, gpuAccel, interactive])
 
   // 切分屏布局(单/双/四):可见格宽度变,但 active 不变 → 上面 active effect 不重跑。
   // 这里对当前可见格显式补一次 fit+同步 PTY,让 xterm 按新宽度重排(软折行历史 reflow、

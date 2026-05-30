@@ -1,5 +1,5 @@
 import { type MutableRefObject } from 'react'
-import { useStore } from '../state/store'
+import { useStore, type RunState } from '../state/store'
 import { TermPane } from './TermPane'
 import { WorkspaceToolbar } from './WorkspaceToolbar'
 import { GitPanel } from './GitPanel'
@@ -10,7 +10,13 @@ import quayLogo from '../assets/quay-logo.png'
 type Writers = MutableRefObject<Record<string, (s: string) => void>>
 
 /// 右侧工作区:工具条 + CSS Grid 网格。所有 run 始终挂载,只显示当前页的格(切页/切项目不丢输出)。
-export function Workspace({ writers }: { writers: Writers }) {
+export function Workspace({
+  writers,
+  onRestart,
+}: {
+  writers: Writers
+  onRestart: (run: RunState) => void
+}) {
   const { runs, activeRunId, setActive, activeProjectId, closeRun, layout, currentPage, activeGitPath } =
     useStore()
 
@@ -78,11 +84,12 @@ export function Workspace({ writers }: { writers: Writers }) {
             key={r.runId}
             run={r}
             writers={writers}
-            visible={pageIds.has(r.runId)}
+            visible={activeGitPath == null && pageIds.has(r.runId)}
             focused={r.runId === activeRunId}
             onFocus={() => setActive(r.runId)}
             onStop={onStop}
             onClose={onClose}
+            onRestart={onRestart}
           />
         ))}
       </div>

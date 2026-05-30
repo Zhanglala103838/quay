@@ -16,6 +16,7 @@ export function TermPane({
   onFocus,
   onStop,
   onClose,
+  onRestart,
 }: {
   run: RunState
   writers: Writers
@@ -24,6 +25,7 @@ export function TermPane({
   onFocus: () => void
   onStop: (runId: string, label: string) => void
   onClose: (runId: string, running: boolean) => void
+  onRestart: (run: RunState) => void
 }) {
   const running = run.status === 'running'
   return (
@@ -40,6 +42,16 @@ export function TermPane({
         <span className="cell-label" title={run.command}>
           {run.label}
         </span>
+        <button
+          className="tab-restart"
+          title="重新启动这个命令"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRestart(run)
+          }}
+        >
+          ↻
+        </button>
         {running ? (
           <button
             className="tab-stop"
@@ -67,7 +79,12 @@ export function TermPane({
         </button>
       </div>
       <div className="cell-body">
-        <TerminalView runId={run.runId} writers={writers} active={visible} />
+        <TerminalView
+          runId={run.runId}
+          writers={writers}
+          active={visible}
+          interactive={run.interactive}
+        />
       </div>
     </div>
   )

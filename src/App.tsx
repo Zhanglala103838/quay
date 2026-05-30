@@ -10,21 +10,25 @@ import { SettingsButton } from './components/SettingsButton'
 import { SidebarToggle } from './components/SidebarToggle'
 import { ContextMenu } from './components/ContextMenu'
 import { listen } from '@tauri-apps/api/event'
-import { useStore } from './state/store'
+import { useStore, type RunState } from './state/store'
 import { useSettings } from './state/settings'
 import { applyUiFontVars } from './lib/fonts'
-import { runCommand, attachRun, listRuns, listOrphans } from './lib/ipc'
+import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openInVscode } from './lib/ipc'
 import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
+import { showToast } from './state/toast'
+import { Toast } from './components/Toast'
 import type { Orphan, RunEvent } from './lib/types'
 import quayLogo from './assets/quay-logo.png'
 import './App.css'
 
 export default function App() {
-  const { load, upsertRun, applyRunEvent } = useStore()
+  const { load, upsertRun, applyRunEvent, closeRun } = useStore()
   const writers = useRef<Record<string, (s: string) => void>>({})
   // 终端未挂载时暂存输出,挂载后首次 write 时回灌(支撑 reload 历史回放)。
   const pending = useRef<Record<string, string[]>>({})
+  // 正在重启的 runId 集合:防连点 ↻ 开出多个新实例。
+  const restarting = useRef<Set<string>>(new Set())
 
   const write = (runId: string, s: string) => {
     const w = writers.current[runId]
@@ -39,6 +43,22 @@ export default function App() {
       ;(pending.current[runId] ||= []).push(s)
     }
   }
+
+  // 终端 writer 就绪即回灌暂存输出。否则:交互 shell 的首个 prompt 常早于终端挂载到达 → 卡进
+  // pending,而静默 shell 没有后续输出来触发上面 write() 的懒回灌 → 一直空白到用户打字才显出。
+  const flushPendingFor = (runId: string) => {
+    const w = writers.current[runId]
+    const buf = pending.current[runId]
+    if (w && buf?.length) {
+      buf.forEach((b) => w(b))
+      delete pending.current[runId]
+    }
+  }
+  useEffect(() => {
+    const onReady = (e: Event) => flushPendingFor((e as CustomEvent<string>).detail)
+    window.addEventListener('quay:writer-ready', onReady)
+    return () => window.removeEventListener('quay:writer-ready', onReady)
+  }, [])
 
   const handler = (runId: string) => (e: RunEvent) => {
     if (e.type === 'output') write(runId, e.chunk)
@@ -111,6 +131,7 @@ export default function App() {
           command: r.command,
           status: r.status,
           exitCode: r.exitCode,
+          interactive: r.interactive,
         }),
       )
       // 延迟 attach,等终端挂载;history 经 pending 兜底回灌。
@@ -121,26 +142,68 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load])
 
-  const onRun = (label: string, cwd: string, command: string) => {
+  const onRun = (label: string, cwd: string, command: string, interactive = false) => {
     const runId = uuid()
-    upsertRun({ runId, label, cwd, command, status: 'running', exitCode: null }, true)
-    runCommand({ runId, label, cwd, command }, handler(runId)).catch((err) => {
+    upsertRun({ runId, label, cwd, command, status: 'running', exitCode: null, interactive }, true)
+    runCommand({ runId, label, cwd, command, interactive }, handler(runId)).catch((err) => {
       write(runId, `\r\n[启动失败] ${err}\r\n`)
       applyRunEvent(runId, { type: 'exit', code: -1 })
     })
+  }
+
+  // 在某目录开一个可输入的交互终端(zsh -li),归到该项目右侧终端区。每次点都新开一个。
+  const onOpenTerminal = (cwd: string) => {
+    const dirName = cwd.split('/').filter(Boolean).pop() || cwd
+    onRun(`${dirName} ⌨`, cwd, 'zsh -li', true)
+  }
+
+  // 用电脑的 VSCode 打开该目录;没装则浮层提示。
+  const onOpenVscode = (path: string) => {
+    openInVscode(path).catch(() => showToast('未检测到 VSCode'))
+  }
+
+  // 重新启动:用新 runId 起同一条命令替换旧格。运行中要先停、等进程真正退出
+  // (端口/资源释放)再起,避免 dev server 重启撞 EADDRINUSE;已退出则直接重跑。
+  const restartRun = (run: RunState) => {
+    if (restarting.current.has(run.runId)) return // 防连点开多个
+    const { runId, label, cwd, command, interactive } = run
+    const relaunch = () => {
+      onRun(label, cwd, command, interactive) // 新 runId 成为当前激活格
+      closeCommand(runId).catch(() => {}) // 释放后端旧 run 资源
+      closeRun(runId) // 移除旧格(activeRunId 已是新格,不受影响)
+      restarting.current.delete(runId)
+    }
+    if (run.status !== 'running') {
+      relaunch()
+      return
+    }
+    restarting.current.add(runId)
+    stopCommand(runId)
+    const startedAt = Date.now()
+    // 轮询 store:旧 run 翻成 exited(或被清掉)= 进程已死、端口已释放,再重跑。8s 兜底。
+    const timer = setInterval(() => {
+      const cur = useStore.getState().runs.find((r) => r.runId === runId)
+      if (!cur || cur.status === 'exited' || Date.now() - startedAt > 8000) {
+        clearInterval(timer)
+        relaunch()
+      }
+    }, 120)
   }
 
   return (
     <>
       <AuroraBackground />
       <div className={'app' + (collapsed ? ' sidebar-collapsed' : '')}>
-        {/* 沉浸式拖拽顶栏：替代 macOS 原生标题栏，给交通灯留位 + 支持拖动窗口 */}
-        <div className="titlebar" data-tauri-drag-region>
+        {/* 沉浸式拖拽顶栏：替代 macOS 原生标题栏，给交通灯留位。
+            拖窗由原生 NSView 处理(见 src-tauri/src/lib.rs install_titlebar_drag),
+            不再用 data-tauri-drag-region——后者是 JS+IPC,命中上游 #12597 拖完卡几秒,
+            且整窗 movableByWindowBackground 会吞掉终端拖拽选区。 */}
+        <div className="titlebar">
           <div className="titlebar-left">
             <SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} />
           </div>
-          <span className="titlebar-brand" data-tauri-drag-region>
-            <img src={quayLogo} className="logo-mark" alt="" draggable={false} data-tauri-drag-region />
+          <span className="titlebar-brand">
+            <img src={quayLogo} className="logo-mark" alt="" draggable={false} />
             <span className="gradient-text">Quay</span>
           </span>
           <div className="titlebar-right">
@@ -148,12 +211,13 @@ export default function App() {
           </div>
         </div>
         <div className="main">
-          <Sidebar onRun={onRun} />
-          <Workspace writers={writers} />
+          <Sidebar onRun={onRun} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
+          <Workspace writers={writers} onRestart={restartRun} />
         </div>
         <RunningBar />
         <OrphanDialog orphans={orphans} onClose={() => setOrphans([])} />
         <ConfirmDialog />
+        <Toast />
       </div>
       <ContextMenu />
     </>

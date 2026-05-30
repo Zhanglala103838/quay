@@ -476,6 +476,52 @@ html.resizing .runtabs {
   opacity: 1;
 }
 
+/* 目录行右侧操作区:开终端 / VSCode / 删除,整体靠右。 */
+.dir-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+/* 终端 / VSCode 图标按钮:与 .delete-btn 同尺寸,常驻可见(主操作),hover 高亮。 */
+.dir-act-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: all 0.18s;
+}
+.dir-path:hover .dir-act-btn {
+  opacity: 0.85;
+}
+.dir-act-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--glass-border-hi);
+  background: var(--accent-soft);
+  box-shadow: 0 0 12px rgba(56, 232, 255, 0.15);
+}
+/* 操作区里的删除:沿用「hover 行才明显」节奏(无 .delete-btn-right 类,这里补) */
+.dir-actions .delete-btn {
+  opacity: 0.32;
+}
+.dir-path:hover .dir-actions .delete-btn {
+  opacity: 0.7;
+}
+.dir-actions .delete-btn:hover {
+  opacity: 1;
+}
+
 .dir {
   margin: 4px 0 4px 2px;
 }
@@ -871,9 +917,30 @@ html.resizing .runtabs {
   border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
 }
+.ws-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .ws-layouts {
   display: flex;
   gap: 4px;
+}
+/* 关闭已结束终端:红调,只在存在 exited 终端时出现 */
+.ws-clear-exited {
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  background: rgba(255, 107, 107, 0.08);
+  color: var(--red);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: all 0.18s;
+}
+.ws-clear-exited:hover {
+  background: rgba(255, 107, 107, 0.18);
+  box-shadow: 0 0 12px rgba(255, 107, 107, 0.22);
 }
 .ws-layout-btn {
   padding: 5px 12px;
@@ -1000,8 +1067,34 @@ html.resizing .runtabs {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  /* 不再 flex:1 —— 让「重新启动」按钮紧贴命令名右侧;弹性间隔交给 .tab-restart 的 margin-right:auto */
+  flex: 0 1 auto;
   min-width: 0;
+}
+/* 重新启动:紧贴命令名右侧,并作为唯一弹性间隔把 ■/拷贝/× 推到最右 */
+.tab-restart {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.tab-restart:hover {
+  background: rgba(34, 211, 238, 0.16);
+  color: var(--cyan, #22d3ee);
+}
+.tab-restart:active {
+  transform: rotate(-90deg);
 }
 .cell-copy {
   display: flex;
@@ -1360,6 +1453,36 @@ html.resizing .runtabs {
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 18px rgba(56, 232, 255, 0.12);
 }
 
+/* 输入框 + 「选择目录」按钮同行（手输与选择二选一） */
+.field-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.field-input-row .field input,
+.field-input-row input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+.field-pick-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: rgba(56, 232, 255, 0.08);
+  border: 1px solid var(--glass-border);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: all 0.18s;
+}
+.field-pick-btn:hover {
+  border-color: var(--glass-border-hi);
+  background: rgba(56, 232, 255, 0.16);
+  box-shadow: 0 0 14px rgba(56, 232, 255, 0.18);
+}
+
 /* 快速选择 chips（InputModal / SettingsModal 复用） */
 .field-chips {
   display: flex;
@@ -1602,7 +1725,8 @@ html.resizing .runtabs {
 }
 
 /* 命令解释按钮 + 气泡 */
-.explain-btn {
+.explain-btn,
+.edit-btn {
   margin-left: auto;
   background: none;
   border: none;
@@ -1614,10 +1738,16 @@ html.resizing .runtabs {
   transition: all 0.18s;
   flex-shrink: 0;
 }
-.cmd:hover .explain-btn {
+/* explain 在场时由它吃掉左侧空白(margin:auto),edit 紧随其后即可 */
+.explain-btn + .edit-btn {
+  margin-left: 4px;
+}
+.cmd:hover .explain-btn,
+.cmd:hover .edit-btn {
   opacity: 1;
 }
-.explain-btn:hover {
+.explain-btn:hover,
+.edit-btn:hover {
   color: var(--accent);
 }
 .cmd-explain {
@@ -2266,4 +2396,35 @@ html.resizing .runtabs {
   color: var(--amber);
   border-color: rgba(251, 191, 36, 0.3);
   background: rgba(251, 191, 36, 0.08);
+}
+
+/* 轻量浮层提示(底部居中),~2.2s 自动消失。见 components/Toast.tsx + state/toast.ts。 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  max-width: 80vw;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(18, 26, 36, 0.92);
+  border: 1px solid var(--glass-border-hi);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  animation: toast-in 0.18s ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }

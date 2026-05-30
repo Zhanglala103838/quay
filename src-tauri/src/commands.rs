@@ -1,12 +1,29 @@
 use crate::runner::{Registry, RunEvent};
 use crate::types::*;
-use crate::{config, reconcile, runner, scanner};
+use crate::{config, reconcile, runner, scanner, watcher};
 use tauri::ipc::Channel;
 use tauri::State;
 
 #[tauri::command]
 pub fn scan_dir(path: String) -> ScanResult {
     scanner::scan_directory(&path)
+}
+
+/// 开始监听该目录 package.json,变更时后端 emit `pkg-changed`(前端按 path 匹配重扫)。
+/// 同一 path 多次调用走引用计数,只起一个 watcher。
+#[tauri::command]
+pub fn watch_dir(
+    app: tauri::AppHandle,
+    reg: State<watcher::WatchRegistry>,
+    path: String,
+) -> Result<(), String> {
+    reg.watch(app, path)
+}
+
+/// 解除一次监听引用(与 watch_dir 配对)。引用归 0 时真正停监听。
+#[tauri::command]
+pub fn unwatch_dir(reg: State<watcher::WatchRegistry>, path: String) {
+    reg.unwatch(&path);
 }
 
 #[tauri::command]
@@ -26,13 +43,39 @@ pub fn run_command(
     label: String,
     cwd: String,
     command: String,
+    interactive: bool,
     on_event: Channel<RunEvent>,
 ) -> Result<u32, String> {
     // 把 Tauri Channel 包成通用 sink,runner 不直接依赖 Channel(便于测试)。
     let sink: runner::Sink = std::sync::Arc::new(move |e: RunEvent| {
         let _ = on_event.send(e);
     });
-    runner::spawn_run(&reg, run_id, label, cwd, command, sink)
+    runner::spawn_run(&reg, run_id, label, cwd, command, interactive, sink)
+}
+
+/// 把键盘输入写进交互终端的 PTY stdin。
+#[tauri::command]
+pub fn write_run(reg: State<Registry>, run_id: String, data: String) -> Result<(), String> {
+    runner::write_run(&reg, &run_id, &data)
+}
+
+/// 用 VSCode 打开某目录。优先经 LaunchServices 按 bundle id 启动(无需安装 `code` CLI);
+/// 未注册任何 VSCode bundle(没装)时返回 Err,前端据此弹「未检测到 VSCode」。
+#[tauri::command]
+pub fn open_in_vscode(path: String) -> Result<(), String> {
+    use std::process::Command;
+    let open_bundle = |bid: &str| -> bool {
+        Command::new("open")
+            .args(["-b", bid, &path])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+    if open_bundle("com.microsoft.VSCode") || open_bundle("com.microsoft.VSCodeInsiders") {
+        Ok(())
+    } else {
+        Err("未检测到 VSCode".into())
+    }
 }
 
 #[tauri::command]

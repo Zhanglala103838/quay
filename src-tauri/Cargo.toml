@@ -26,11 +26,15 @@ tauri = { version = "2.11.2", features = ["tray-icon", "devtools"] }
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-dialog = "2"
 portable-pty = "0.8"
 sysinfo = "0.32"
 libc = "0.2"
 uuid = { version = "1", features = ["v4"] }
 dirs = "5"
+# 监听绑定目录的 package.json:变更(防抖后)emit pkg-changed,前端重扫 scripts。
+# full 版会把 atomic-save 的 rename from/to 合并成单事件,避免编辑器保存触发重复扫。
+notify-debouncer-full = "0.5"
 
 # macOS 原生:强制 app 级深色外观,让全屏时系统菜单栏跟随深色(与玻璃 UI 一致)
 [target.'cfg(target_os = "macos")'.dependencies]
