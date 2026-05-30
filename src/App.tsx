@@ -80,6 +80,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 窗口重获焦点 → 触发 git 刷新(§5)。只在 blur→focus 上升沿 bump，
+  // 避免启动即 bump(首拉已由各 useEffect 自带)与失焦误触发。
+  useEffect(() => {
+    let focused = true
+    const uns: Array<() => void> = []
+    listen('tauri://blur', () => {
+      focused = false
+    }).then((u) => uns.push(u))
+    listen('tauri://focus', () => {
+      if (!focused) {
+        focused = true
+        useStore.getState().bumpGitRefresh()
+      }
+    }).then((u) => uns.push(u))
+    return () => uns.forEach((u) => u())
+  }, [])
+
   useEffect(() => {
     // 先 load(config 就绪)再恢复 run —— upsertRun 要靠 config 按 cwd 推断 projectId。
     ;(async () => {

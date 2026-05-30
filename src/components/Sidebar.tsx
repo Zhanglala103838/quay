@@ -10,6 +10,7 @@ import { InputModal } from './InputModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
 import { DeleteButton } from './ui/DeleteButton'
+import { GitChip } from './GitChip'
 
 interface RunFn {
   (label: string, cwd: string, command: string): void
@@ -392,6 +393,7 @@ function DirNode({
         <span className="dir-icon">📁</span>
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
+        <GitChip path={path} />
         {dirRunning > 0 && <span className="activity-dot" />}
         {onRemove && <DeleteButton title="删除此目录绑定" floatRight onClick={onRemove} />}
       </div>
