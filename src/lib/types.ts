@@ -41,3 +41,40 @@ export interface RunInfo {
   status: 'running' | 'exited'
   exitCode: number | null
 }
+
+/// git 状态(字段对齐 Rust 的 serde rename_all="camelCase")。
+export interface GitBrief {
+  isRepo: boolean
+  branch: string
+  headShort: string
+  detached: boolean
+  dirty: number
+  ahead: number
+  behind: number
+  hasUpstream: boolean
+}
+export interface GitFile {
+  status: string
+  path: string
+  /// 行数 sentinel：>=0 实际；-1 二进制；-2 未跟踪。
+  added: number
+  deleted: number
+}
+export interface GitCommit {
+  hash: string
+  subject: string
+  author: string
+  relTime: string
+}
+export interface GitDetail {
+  isRepo: boolean
+  repoRoot: string
+  branch: string
+  headShort: string
+  detached: boolean
+  ahead: number
+  behind: number
+  hasUpstream: boolean
+  files: GitFile[]
+  commits: GitCommit[]
+}

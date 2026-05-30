@@ -46,6 +46,8 @@ interface Store {
   activeProjectId: string | null
   layout: Layout
   currentPage: number
+  activeGitPath: string | null
+  gitRefreshTick: number
   load: () => Promise<void>
   persist: () => Promise<void>
   addProject: (name: string) => void
@@ -61,6 +63,9 @@ interface Store {
   applyRunEvent: (runId: string, e: RunEvent) => void
   setActive: (runId: string | null) => void
   closeRun: (runId: string) => void
+  openGit: (path: string) => void
+  closeGit: () => void
+  bumpGitRefresh: () => void
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -70,6 +75,8 @@ export const useStore = create<Store>((set, get) => ({
   activeProjectId: null,
   layout: 1,
   currentPage: 0,
+  activeGitPath: null,
+  gitRefreshTick: 0,
 
   load: async () => {
     const config = await getConfig()
@@ -204,6 +211,9 @@ export const useStore = create<Store>((set, get) => ({
       }
       return { runs, activeRunId, currentPage }
     }),
+  openGit: (path) => set({ activeGitPath: path }),
+  closeGit: () => set({ activeGitPath: null }),
+  bumpGitRefresh: () => set((s) => ({ gitRefreshTick: s.gitRefreshTick + 1 })),
 }))
 
 // dev-only：暴露 store 便于浏览器内调试 / 视觉走查

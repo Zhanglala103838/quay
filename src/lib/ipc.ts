@@ -1,5 +1,5 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
-import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport } from './types'
+import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport, GitBrief, GitDetail } from './types'
 
 export const scanDir = (path: string) => invoke<ScanResult>('scan_dir', { path })
 export const getConfig = () => invoke<Config>('get_config')
@@ -16,6 +16,8 @@ export const listRuns = () => invoke<RunInfo[]>('list_runs')
 export const runsMemory = () => invoke<MemReport>('runs_memory')
 export const listOrphans = () => invoke<Orphan[]>('list_orphans')
 export const killOrphan = (pgid: number) => invoke<void>('kill_orphan', { pgid })
+export const gitBrief = (path: string) => invoke<GitBrief>('git_brief', { path })
+export const gitDetail = (path: string) => invoke<GitDetail>('git_detail', { path })
 
 export function runCommand(
   args: { runId: string; label: string; cwd: string; command: string },
