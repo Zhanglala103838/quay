@@ -393,10 +393,12 @@ function DirNode({
         <span className="dir-icon">📁</span>
         <span className="dir-name">{dirName}</span>
         {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
-        <GitChip path={path} />
         {dirRunning > 0 && <span className="activity-dot" />}
         {onRemove && <DeleteButton title="删除此目录绑定" floatRight onClick={onRemove} />}
       </div>
+
+      {/* git chip 单独一行(缩进对齐目录名),避免和目录名挤一行把名字压折 */}
+      <GitChip path={path} />
 
       {open && (
         <div className="dir-body">

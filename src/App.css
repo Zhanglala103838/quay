@@ -1816,13 +1816,17 @@ html.resizing .runtabs {
    贴合 aurora-glass 系统:全用设计 token,面板透明填充 runtabs(不嵌套玻璃卡)。
    ============================================================ */
 
-/* ---- 侧栏分支 chip ---- */
+/* ---- 侧栏分支 chip(目录名下方单独一行) ---- */
+.git-chip-line {
+  /* 缩进对齐目录名(chevron 10 + gap 6 + pad 6 ≈ 26),与 dir-path 同层 */
+  padding: 1px 6px 4px 28px;
+  min-width: 0;
+}
 .git-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-left: 4px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   line-height: 16px;
@@ -1831,7 +1835,7 @@ html.resizing .runtabs {
   background: rgba(120, 180, 220, 0.06);
   color: var(--text-dim);
   cursor: pointer;
-  max-width: 168px;
+  max-width: 100%;
   transition: border-color 0.18s, background 0.18s, color 0.18s;
 }
 .git-chip:hover {

@@ -30,21 +30,23 @@ export function GitChip({ path }: { path: string }) {
       : ''
 
   return (
-    <span
-      className="git-chip"
-      title="查看 git 状态"
-      onClick={(e) => {
-        e.stopPropagation()
-        openGit(path)
-      }}
-    >
-      <span className="git-chip-branch">⎇ {label}</span>
-      {brief.dirty > 0 ? (
-        <span className="git-chip-dirty">●{brief.dirty}</span>
-      ) : (
-        <span className="git-chip-clean">✓</span>
-      )}
-      {sync && <span className="git-chip-sync">{sync}</span>}
-    </span>
+    <div className="git-chip-line">
+      <span
+        className="git-chip"
+        title="查看 git 状态"
+        onClick={(e) => {
+          e.stopPropagation()
+          openGit(path)
+        }}
+      >
+        <span className="git-chip-branch">⎇ {label}</span>
+        {brief.dirty > 0 ? (
+          <span className="git-chip-dirty">●{brief.dirty}</span>
+        ) : (
+          <span className="git-chip-clean">✓</span>
+        )}
+        {sync && <span className="git-chip-sync">{sync}</span>}
+      </span>
+    </div>
   )
 }
