@@ -175,6 +175,8 @@ pub fn run() {
             commands::runs_memory,
             commands::list_orphans,
             commands::kill_orphan,
+            commands::git_brief,
+            commands::git_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quay");

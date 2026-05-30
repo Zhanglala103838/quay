@@ -94,3 +94,14 @@ pub fn list_orphans() -> Vec<reconcile::Orphan> {
 pub fn kill_orphan(pgid: i32) {
     reconcile::kill_orphan(pgid);
 }
+
+// git 命令设 async：Tauri 在线程池跑，大仓库不阻塞 UI 主线程(区别于同步 scan_dir)。
+#[tauri::command]
+pub async fn git_brief(path: String) -> crate::git::GitBrief {
+    crate::git::git_brief(&path)
+}
+
+#[tauri::command]
+pub async fn git_detail(path: String) -> crate::git::GitDetail {
+    crate::git::git_detail(&path)
+}
