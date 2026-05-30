@@ -271,26 +271,38 @@ fn parse_refs(deco: &str) -> Vec<GitRef> {
 /// 拓扑提交流(最近 50 条)。每条带 parents/refs/unpushed，供前端算 lane 画连线。
 /// rev 空 → HEAD；否则查看指定分支历史(只读，不动工作区)。
 fn collect_graph(dir: &str, rev: &str) -> Vec<GitCommit> {
-    let target = if rev.is_empty() { "HEAD" } else { rev };
+    // rev 空 → 全部分支(--all,有分叉感);否则只看该分支线性历史。
+    let all = rev.is_empty();
     // 未推集合：不在任何远程跟踪分支里的 commit(= 没推到任何远程)。
     let mut unpushed_set = std::collections::HashSet::new();
-    let (uok, uout) = git(dir, &["rev-list", "--abbrev-commit", target, "--not", "--remotes"]);
+    let mut uargs: Vec<&str> = vec!["rev-list", "--abbrev-commit"];
+    if all {
+        uargs.push("--all");
+    } else {
+        uargs.push(rev);
+    }
+    uargs.push("--not");
+    uargs.push("--remotes");
+    let (uok, uout) = git(dir, &uargs);
     if uok {
         for h in uout.lines() {
             unpushed_set.insert(h.to_string());
         }
     }
     // 字段：hash \x1f subject \x1f author \x1f relTime \x1f parents(空格) \x1f decorations
-    let (ok, out) = git(
-        dir,
-        &[
-            "log",
-            "-n",
-            "50",
-            "--pretty=format:%h\x1f%s\x1f%an\x1f%cr\x1f%p\x1f%D",
-            target,
-        ],
-    );
+    // --date-order：严格按时间，父总在子下方，lane 不乱跳。
+    let mut largs: Vec<&str> = vec!["log"];
+    if all {
+        largs.push("--all");
+    }
+    largs.push("--date-order");
+    largs.push("-n");
+    largs.push("50");
+    largs.push("--pretty=format:%h\x1f%s\x1f%an\x1f%cr\x1f%p\x1f%D");
+    if !all {
+        largs.push(rev);
+    }
+    let (ok, out) = git(dir, &largs);
     if !ok || out.is_empty() {
         return vec![];
     }
@@ -374,14 +386,8 @@ pub fn git_detail(path: &str, rev: &str) -> GitDetail {
     };
     let (branch, head_short, detached) = branch_info(path);
     let (ahead, behind, has_upstream) = ahead_behind(path);
-    // viewing：显式 rev 优先，否则当前分支(detached 时为短 hash)。
-    let viewing = if !rev.is_empty() {
-        rev.to_string()
-    } else if detached {
-        head_short.clone()
-    } else {
-        branch.clone()
-    };
+    // viewing：显式 rev → 该分支；空 → "" 表示"全部分支"(前端显示文案)。
+    let viewing = rev.to_string();
     GitDetail {
         is_repo: true,
         repo_root,
@@ -698,8 +704,12 @@ mod tests {
         let det = git_detail(d.to_str().unwrap(), "dev");
         assert_eq!(det.viewing, "dev");
         assert!(det.commits.iter().any(|c| c.subject == "dev-only"));
-        // 看 main 自身不应有 dev-only
-        let det_main = git_detail(d.to_str().unwrap(), "");
+        // 显式只看 main(线性)不应有 dev-only
+        let det_main = git_detail(d.to_str().unwrap(), "main");
         assert!(!det_main.commits.iter().any(|c| c.subject == "dev-only"));
+        // 默认 rev=""(全部分支 --all)应包含 dev-only
+        let det_all = git_detail(d.to_str().unwrap(), "");
+        assert_eq!(det_all.viewing, "");
+        assert!(det_all.commits.iter().any(|c| c.subject == "dev-only"));
     }
 }

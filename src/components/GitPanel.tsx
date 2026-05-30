@@ -62,7 +62,8 @@ export function GitPanel() {
   if (!path) return null
 
   const dirName = path.split('/').filter(Boolean).pop() || path
-  const viewing = detail?.viewing || (detail?.detached ? `游离 @ ${detail.headShort}` : detail?.branch) || ''
+  // viewing 空 = 全部分支(--all);否则该分支名。
+  const viewing = detail?.viewing || '全部分支'
 
   return (
     <div className="git-panel">
@@ -85,12 +86,23 @@ export function GitPanel() {
                 <>
                   <div className="git-branch-backdrop" onClick={() => setMenuOpen(false)} />
                   <div className="git-branch-menu">
+                    {/* 默认:全部分支(--all,有分叉感) */}
+                    <button
+                      className={'git-branch-item' + (rev === '' ? ' active' : '')}
+                      onClick={() => {
+                        setRev('')
+                        setMenuOpen(false)
+                      }}
+                    >
+                      <span className="gbi-name">全部分支</span>
+                      <span className="gbi-cur">拓扑</span>
+                    </button>
                     {detail.branches.map((b) => (
                       <button
                         key={b.name}
-                        className={'git-branch-item' + (b.name === viewing ? ' active' : '')}
+                        className={'git-branch-item' + (b.name === rev ? ' active' : '')}
                         onClick={() => {
-                          setRev(b.current ? '' : b.name)
+                          setRev(b.name)
                           setMenuOpen(false)
                         }}
                       >
