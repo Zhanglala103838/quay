@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚓️ Quay
+<img src="src/assets/quay-logo.png" alt="Quay" width="120" height="120" />
+
+# Quay
 
 **多项目开发命令的「码头」——把散落各处的 dev 进程，统一停靠、统一监控。**
 
