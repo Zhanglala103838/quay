@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod git;
 mod identity;
 mod ledger;
 mod reconcile;
