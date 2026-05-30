@@ -25,6 +25,14 @@ pub struct GitFile {
     pub deleted: i64,
 }
 
+/// commit 上挂的 ref 标记。kind: head(当前HEAD) / local(本地分支) / remote(远程分支) / tag。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRef {
+    pub name: String,
+    pub kind: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitCommit {
@@ -32,6 +40,21 @@ pub struct GitCommit {
     pub subject: String,
     pub author: String,
     pub rel_time: String,
+    /// 父 commit 短 hash（merge 有多个；前端算 lane 拓扑用）。
+    pub parents: Vec<String>,
+    /// 该 commit 上的分支/远程/tag 徽标。
+    pub refs: Vec<GitRef>,
+    /// 是否未推到任何远程（rev-list --not --remotes）。
+    pub unpushed: bool,
+}
+
+/// 本地分支(分支下拉用)。current=当前 HEAD 所在；upstream 空=无跟踪。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranch {
+    pub name: String,
+    pub current: bool,
+    pub upstream: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,6 +70,10 @@ pub struct GitDetail {
     pub has_upstream: bool,
     pub files: Vec<GitFile>,
     pub commits: Vec<GitCommit>,
+    /// 本地分支列表(分支下拉)。
+    pub branches: Vec<GitBranch>,
+    /// 当前正在查看历史的 rev(分支名；默认=当前分支)。
+    pub viewing: String,
 }
 
 /// 在 dir 下跑 `git <args>`。返回 (成功且退出码 0, stdout 去尾空白)。
@@ -202,11 +229,67 @@ fn collect_files(dir: &str) -> Vec<GitFile> {
     files
 }
 
-/// 最近 30 条提交。用 \x1f(单元分隔符)切字段，免标题里的空格/符号干扰。
-fn collect_commits(dir: &str) -> Vec<GitCommit> {
+/// 解析 %D decorations(如 "HEAD -> main, origin/main, tag: v1, feature/x") → Vec<GitRef>。
+fn parse_refs(deco: &str) -> Vec<GitRef> {
+    let mut refs = Vec::new();
+    for raw in deco.split(", ") {
+        let r = raw.trim();
+        if r.is_empty() {
+            continue;
+        }
+        if let Some(rest) = r.strip_prefix("HEAD -> ") {
+            // HEAD 指向某分支 → 该分支标 head(高亮当前)
+            refs.push(GitRef {
+                name: rest.to_string(),
+                kind: "head".into(),
+            });
+        } else if r == "HEAD" {
+            refs.push(GitRef {
+                name: "HEAD".into(),
+                kind: "head".into(),
+            });
+        } else if let Some(tag) = r.strip_prefix("tag: ") {
+            refs.push(GitRef {
+                name: tag.to_string(),
+                kind: "tag".into(),
+            });
+        } else if r.contains('/') {
+            refs.push(GitRef {
+                name: r.to_string(),
+                kind: "remote".into(),
+            });
+        } else {
+            refs.push(GitRef {
+                name: r.to_string(),
+                kind: "local".into(),
+            });
+        }
+    }
+    refs
+}
+
+/// 拓扑提交流(最近 50 条)。每条带 parents/refs/unpushed，供前端算 lane 画连线。
+/// rev 空 → HEAD；否则查看指定分支历史(只读，不动工作区)。
+fn collect_graph(dir: &str, rev: &str) -> Vec<GitCommit> {
+    let target = if rev.is_empty() { "HEAD" } else { rev };
+    // 未推集合：不在任何远程跟踪分支里的 commit(= 没推到任何远程)。
+    let mut unpushed_set = std::collections::HashSet::new();
+    let (uok, uout) = git(dir, &["rev-list", "--abbrev-commit", target, "--not", "--remotes"]);
+    if uok {
+        for h in uout.lines() {
+            unpushed_set.insert(h.to_string());
+        }
+    }
+    // 字段：hash \x1f subject \x1f author \x1f relTime \x1f parents(空格) \x1f decorations
     let (ok, out) = git(
         dir,
-        &["log", "-n", "30", "--pretty=format:%h\x1f%s\x1f%an\x1f%cr"],
+        &[
+            "log",
+            "-n",
+            "50",
+            "--pretty=format:%h\x1f%s\x1f%an\x1f%cr\x1f%p\x1f%D",
+            target,
+        ],
     );
     if !ok || out.is_empty() {
         return vec![];
@@ -215,17 +298,64 @@ fn collect_commits(dir: &str) -> Vec<GitCommit> {
         .filter_map(|line| {
             let mut it = line.split('\x1f');
             let hash = it.next()?.to_string();
+            let subject = it.next().unwrap_or("").to_string();
+            let author = it.next().unwrap_or("").to_string();
+            let rel_time = it.next().unwrap_or("").to_string();
+            let parents = it
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            let refs = parse_refs(it.next().unwrap_or(""));
+            let unpushed = unpushed_set.contains(&hash);
             Some(GitCommit {
                 hash,
-                subject: it.next().unwrap_or("").to_string(),
-                author: it.next().unwrap_or("").to_string(),
-                rel_time: it.next().unwrap_or("").to_string(),
+                subject,
+                author,
+                rel_time,
+                parents,
+                refs,
+                unpushed,
             })
         })
         .collect()
 }
 
-pub fn git_detail(path: &str) -> GitDetail {
+/// 本地分支列表(分支下拉用)。current=当前 HEAD 所在；upstream 空=无跟踪。
+fn collect_branches(dir: &str) -> Vec<GitBranch> {
+    let (ok, out) = git(
+        dir,
+        &[
+            "for-each-ref",
+            "--sort=-committerdate",
+            "refs/heads",
+            "--format=%(refname:short)\x1f%(upstream:short)\x1f%(HEAD)",
+        ],
+    );
+    if !ok || out.is_empty() {
+        return vec![];
+    }
+    out.lines()
+        .filter_map(|line| {
+            let mut it = line.split('\x1f');
+            let name = it.next()?.to_string();
+            if name.is_empty() {
+                return None;
+            }
+            let upstream = it.next().unwrap_or("").to_string();
+            let current = it.next().unwrap_or("") == "*";
+            Some(GitBranch {
+                name,
+                current,
+                upstream,
+            })
+        })
+        .collect()
+}
+
+/// rev 空 → 看当前分支(HEAD)历史；否则看指定分支(只读)。
+pub fn git_detail(path: &str, rev: &str) -> GitDetail {
     let Some(repo_root) = repo_root(path) else {
         return GitDetail {
             is_repo: false,
@@ -238,10 +368,20 @@ pub fn git_detail(path: &str) -> GitDetail {
             has_upstream: false,
             files: vec![],
             commits: vec![],
+            branches: vec![],
+            viewing: String::new(),
         };
     };
     let (branch, head_short, detached) = branch_info(path);
     let (ahead, behind, has_upstream) = ahead_behind(path);
+    // viewing：显式 rev 优先，否则当前分支(detached 时为短 hash)。
+    let viewing = if !rev.is_empty() {
+        rev.to_string()
+    } else if detached {
+        head_short.clone()
+    } else {
+        branch.clone()
+    };
     GitDetail {
         is_repo: true,
         repo_root,
@@ -252,7 +392,9 @@ pub fn git_detail(path: &str) -> GitDetail {
         behind,
         has_upstream,
         files: collect_files(path),
-        commits: collect_commits(path),
+        commits: collect_graph(path, rev),
+        branches: collect_branches(path),
+        viewing,
     }
 }
 
@@ -402,7 +544,7 @@ mod tests {
         g(&d, &["commit", "-m", "init"]);
         fs::write(d.join("a.txt"), "1\n2\n3\n4\n").unwrap(); // 已跟踪 +2
         fs::write(d.join("new.txt"), "n\n").unwrap(); // 未跟踪
-        let det = git_detail(d.to_str().unwrap());
+        let det = git_detail(d.to_str().unwrap(), "");
         let nf = det.files.iter().find(|f| f.path == "new.txt").unwrap();
         assert_eq!(nf.status, "??");
         assert_eq!(nf.added, -2);
@@ -419,7 +561,7 @@ mod tests {
         g(&d, &["add", "."]);
         g(&d, &["commit", "-m", "init"]);
         fs::write(d.join("bin.dat"), [0u8, 9, 9, 0, 9, 9]).unwrap();
-        let det = git_detail(d.to_str().unwrap());
+        let det = git_detail(d.to_str().unwrap(), "");
         let bf = det.files.iter().find(|f| f.path == "bin.dat").unwrap();
         assert_eq!(bf.added, -1, "二进制 numstat 为 -");
         assert_eq!(bf.deleted, -1);
@@ -432,7 +574,7 @@ mod tests {
         fs::write(d.join("a.txt"), "1\n").unwrap();
         g(&d, &["add", "."]);
         g(&d, &["commit", "-m", "修复 PTY kill 自杀 bug (含空格)"]);
-        let det = git_detail(d.to_str().unwrap());
+        let det = git_detail(d.to_str().unwrap(), "");
         assert_eq!(det.commits.len(), 1);
         assert_eq!(det.commits[0].subject, "修复 PTY kill 自杀 bug (含空格)");
         assert!(!det.commits[0].hash.is_empty());
@@ -443,10 +585,121 @@ mod tests {
     fn empty_repo_detail_no_commits_no_panic() {
         let d = tmp("empty_detail");
         g(&d, &["init"]);
-        let det = git_detail(d.to_str().unwrap());
+        let det = git_detail(d.to_str().unwrap(), "");
         assert!(det.is_repo);
         assert_eq!(det.branch, "main");
         assert!(det.commits.is_empty());
         assert!(det.files.is_empty());
+        assert!(det.branches.is_empty());
+    }
+
+    #[test]
+    fn commit_parents_linear_and_merge() {
+        let d = tmp("parents");
+        g(&d, &["init"]);
+        fs::write(d.join("a.txt"), "1\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "c1"]);
+        // 线性 c2
+        fs::write(d.join("a.txt"), "2\n").unwrap();
+        g(&d, &["commit", "-am", "c2"]);
+        // 开分支 feat 做一个 commit，再 merge 回 main(--no-ff 制造 merge commit)
+        g(&d, &["checkout", "-b", "feat"]);
+        fs::write(d.join("b.txt"), "b\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "feat-1"]);
+        g(&d, &["checkout", "main"]);
+        g(&d, &["merge", "--no-ff", "feat", "-m", "merge feat"]);
+        let det = git_detail(d.to_str().unwrap(), "");
+        // 最新是 merge commit，应有 2 个 parent
+        let merge = det.commits.iter().find(|c| c.subject == "merge feat").unwrap();
+        assert_eq!(merge.parents.len(), 2, "merge commit 应有 2 个父");
+        // c1 是根，无父
+        let c1 = det.commits.iter().find(|c| c.subject == "c1").unwrap();
+        assert!(c1.parents.is_empty(), "根 commit 无父");
+        // c2 有 1 个父
+        let c2 = det.commits.iter().find(|c| c.subject == "c2").unwrap();
+        assert_eq!(c2.parents.len(), 1);
+    }
+
+    #[test]
+    fn head_ref_decoration() {
+        let d = tmp("refs");
+        g(&d, &["init"]);
+        fs::write(d.join("a.txt"), "1\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "c1"]);
+        g(&d, &["tag", "v1.0"]);
+        let det = git_detail(d.to_str().unwrap(), "");
+        let top = &det.commits[0];
+        // HEAD 指向 main → 有个 kind=head name=main 的 ref
+        assert!(
+            top.refs.iter().any(|r| r.kind == "head" && r.name == "main"),
+            "应有 HEAD->main 标记, got {:?}",
+            top.refs
+        );
+        // tag v1.0
+        assert!(
+            top.refs.iter().any(|r| r.kind == "tag" && r.name == "v1.0"),
+            "应有 tag v1.0"
+        );
+    }
+
+    #[test]
+    fn unpushed_flag_vs_remote() {
+        let remote = tmp("up_remote");
+        g(&remote, &["init", "--bare"]);
+        let url = remote.to_str().unwrap();
+        let local = tmp("up_local");
+        g(&local, &["clone", url, "."]);
+        fs::write(local.join("a.txt"), "0\n").unwrap();
+        g(&local, &["add", "."]);
+        g(&local, &["commit", "-m", "pushed"]);
+        g(&local, &["push", "-u", "origin", "main"]);
+        // 本地再 commit 一个不推
+        fs::write(local.join("a.txt"), "1\n").unwrap();
+        g(&local, &["commit", "-am", "local-only"]);
+        let det = git_detail(local.to_str().unwrap(), "");
+        let pushed = det.commits.iter().find(|c| c.subject == "pushed").unwrap();
+        let local_only = det.commits.iter().find(|c| c.subject == "local-only").unwrap();
+        assert!(!pushed.unpushed, "已推 commit unpushed=false");
+        assert!(local_only.unpushed, "未推 commit unpushed=true");
+    }
+
+    #[test]
+    fn branches_list_with_current() {
+        let d = tmp("branches");
+        g(&d, &["init"]);
+        fs::write(d.join("a.txt"), "1\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "c1"]);
+        g(&d, &["branch", "dev"]);
+        let det = git_detail(d.to_str().unwrap(), "");
+        assert_eq!(det.branches.len(), 2, "main + dev");
+        let main = det.branches.iter().find(|b| b.name == "main").unwrap();
+        assert!(main.current, "main 是当前分支");
+        let dev = det.branches.iter().find(|b| b.name == "dev").unwrap();
+        assert!(!dev.current);
+    }
+
+    #[test]
+    fn view_specific_branch_history() {
+        let d = tmp("view_rev");
+        g(&d, &["init"]);
+        fs::write(d.join("a.txt"), "1\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "base"]);
+        g(&d, &["checkout", "-b", "dev"]);
+        fs::write(d.join("d.txt"), "d\n").unwrap();
+        g(&d, &["add", "."]);
+        g(&d, &["commit", "-m", "dev-only"]);
+        g(&d, &["checkout", "main"]);
+        // 在 main 上看 dev 的历史(rev="dev")应包含 dev-only；工作区仍是 main 不变。
+        let det = git_detail(d.to_str().unwrap(), "dev");
+        assert_eq!(det.viewing, "dev");
+        assert!(det.commits.iter().any(|c| c.subject == "dev-only"));
+        // 看 main 自身不应有 dev-only
+        let det_main = git_detail(d.to_str().unwrap(), "");
+        assert!(!det_main.commits.iter().any(|c| c.subject == "dev-only"));
     }
 }

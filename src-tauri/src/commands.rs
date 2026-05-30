@@ -102,6 +102,6 @@ pub async fn git_brief(path: String) -> crate::git::GitBrief {
 }
 
 #[tauri::command]
-pub async fn git_detail(path: String) -> crate::git::GitDetail {
-    crate::git::git_detail(&path)
+pub async fn git_detail(path: String, rev: Option<String>) -> crate::git::GitDetail {
+    crate::git::git_detail(&path, rev.as_deref().unwrap_or(""))
 }
