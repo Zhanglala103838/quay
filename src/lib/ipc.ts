@@ -17,7 +17,8 @@ export const runsMemory = () => invoke<MemReport>('runs_memory')
 export const listOrphans = () => invoke<Orphan[]>('list_orphans')
 export const killOrphan = (pgid: number) => invoke<void>('kill_orphan', { pgid })
 export const gitBrief = (path: string) => invoke<GitBrief>('git_brief', { path })
-export const gitDetail = (path: string) => invoke<GitDetail>('git_detail', { path })
+export const gitDetail = (path: string, rev?: string) =>
+  invoke<GitDetail>('git_detail', { path, rev: rev ?? '' })
 
 export function runCommand(
   args: { runId: string; label: string; cwd: string; command: string },

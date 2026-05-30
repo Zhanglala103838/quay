@@ -60,11 +60,23 @@ export interface GitFile {
   added: number
   deleted: number
 }
+export interface GitRef {
+  name: string
+  kind: 'head' | 'local' | 'remote' | 'tag'
+}
 export interface GitCommit {
   hash: string
   subject: string
   author: string
   relTime: string
+  parents: string[]
+  refs: GitRef[]
+  unpushed: boolean
+}
+export interface GitBranch {
+  name: string
+  current: boolean
+  upstream: string
 }
 export interface GitDetail {
   isRepo: boolean
@@ -77,4 +89,6 @@ export interface GitDetail {
   hasUpstream: boolean
   files: GitFile[]
   commits: GitCommit[]
+  branches: GitBranch[]
+  viewing: string
 }
