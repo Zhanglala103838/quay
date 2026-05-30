@@ -66,6 +66,7 @@ interface Store {
   openGit: (path: string) => void
   closeGit: () => void
   bumpGitRefresh: () => void
+  focusRun: (runId: string) => void
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -214,6 +215,19 @@ export const useStore = create<Store>((set, get) => ({
   openGit: (path) => set({ activeGitPath: path }),
   closeGit: () => set({ activeGitPath: null }),
   bumpGitRefresh: () => set((s) => ({ gitRefreshTick: s.gitRefreshTick + 1 })),
+  // 查看某运行中的命令:关 git 面板 + 切到该 run 所在项目/页 + 聚焦(不再跑一个实例)。
+  focusRun: (runId) =>
+    set((s) => {
+      const run = s.runs.find((r) => r.runId === runId)
+      if (!run) return {}
+      const activeProjectId = run.projectId || s.activeProjectId
+      const layout = loadLayout(activeProjectId)
+      const vis = visibleRuns(s.runs, activeProjectId)
+      const idx = vis.findIndex((r) => r.runId === runId)
+      const currentPage = clampPage(pageOf(idx, layout), vis.length, layout)
+      if (activeProjectId) localStorage.setItem(LAST_PROJECT_KEY, activeProjectId)
+      return { activeGitPath: null, activeRunId: runId, activeProjectId, layout, currentPage }
+    }),
 }))
 
 // dev-only：暴露 store 便于浏览器内调试 / 视觉走查

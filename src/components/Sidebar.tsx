@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
 import { scanDir } from '../lib/ipc'
@@ -32,11 +32,17 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
     removeManualCommand,
     removeProject,
     setActiveProject,
+    focusRun,
   } = useStore()
   // runs 引用稳定，组件体内派生 running label 集合（zustand v5）
   const runs = useStore((s) => s.runs)
   const activeProjectId = useStore((s) => s.activeProjectId)
   const runningLabels = new Set(runs.filter((r) => r.status === 'running').map((r) => r.label))
+  // 查看某运行中命令:按 label 找到 running run → 聚焦它的终端(不再跑一个)。
+  const viewRun = (label: string) => {
+    const r = runs.find((x) => x.label === label && x.status === 'running')
+    if (r) focusRun(r.runId)
+  }
   // 每个项目当前在跑数(按 projectId 归属)
   const runningByProject = (pid: string) =>
     runs.filter((r) => r.projectId === pid && r.status === 'running').length
@@ -108,6 +114,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                 key={d.id}
                 path={d.path}
                 onRun={onRun}
+                onView={viewRun}
                 runningLabels={runningLabels}
                 onRemove={() =>
                   askConfirm({
@@ -130,6 +137,7 @@ export function Sidebar({ onRun }: { onRun: RunFn }) {
                     command={`${m.command} · ${m.cwd}`}
                     running={runningLabels.has(m.label)}
                     onRun={() => onRun(m.label, m.cwd, m.command)}
+                    onView={() => viewRun(m.label)}
                     onRemove={() =>
                       askConfirm({
                         title: `删除手动命令「${m.label}」?`,
@@ -212,18 +220,46 @@ function CmdRow({
   command,
   running,
   onRun,
+  onView,
   onRemove,
 }: {
   display: string
   command: string
   running: boolean
   onRun: () => void
+  onView?: () => void
   onRemove?: () => void
 }) {
   const configured = useSettings((s) => s.configured)
   const [explain, setExplain] = useState<{ loading: boolean; text: string; err: boolean } | null>(
     null,
   )
+  // 单/双击区分:运行中 → 单击查看(延迟 220ms 等可能的第二击)、双击再跑一个;未运行 → 单击直接运行。
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (clickTimer.current) clearTimeout(clickTimer.current)
+    },
+    [],
+  )
+  const handleClick = () => {
+    if (!running) {
+      onRun()
+      return
+    }
+    if (clickTimer.current) return // 第二次 click(双击的一部分)忽略,交给 onDoubleClick
+    clickTimer.current = setTimeout(() => {
+      clickTimer.current = null
+      onView?.()
+    }, 220)
+  }
+  const handleDouble = () => {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current)
+      clickTimer.current = null
+    }
+    onRun()
+  }
 
   const toggleExplain = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -242,7 +278,12 @@ function CmdRow({
   return (
     <>
       {/* 原生 title 代替 HeroUI Tooltip —— 避免 overlay 拦截滚动/点击 */}
-      <div className={'cmd' + (running ? ' running' : '')} onClick={onRun}>
+      <div
+        className={'cmd' + (running ? ' running' : '')}
+        onClick={handleClick}
+        onDoubleClick={handleDouble}
+        title={running ? '单击查看 · 双击再次运行' : undefined}
+      >
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
         <span className="cmd-name">{display}</span>
         {running && <span className="cmd-running-tag">运行中</span>}
@@ -274,12 +315,14 @@ function PrefixGroupNode({
   dirName,
   path,
   onRun,
+  onView,
   runningLabels,
 }: {
   group: PrefixGroup
   dirName: string
   path: string
   onRun: RunFn
+  onView: (label: string) => void
   runningLabels: Set<string>
 }) {
   const [open, setOpen] = useState(false)
@@ -304,6 +347,7 @@ function PrefixGroupNode({
               command={it.command}
               running={runningLabels.has(`${dirName}:${it.name}`)}
               onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+              onView={() => onView(`${dirName}:${it.name}`)}
             />
           ))}
         </div>
@@ -315,11 +359,13 @@ function PrefixGroupNode({
 function DirNode({
   path,
   onRun,
+  onView,
   runningLabels,
   onRemove,
 }: {
   path: string
   onRun: RunFn
+  onView: (label: string) => void
   runningLabels: Set<string>
   onRemove?: () => void
 }) {
@@ -433,6 +479,7 @@ function DirNode({
                   dirName={dirName}
                   path={path}
                   onRun={onRun}
+                  onView={onView}
                   runningLabels={runningLabels}
                 />
               ))}
@@ -443,6 +490,7 @@ function DirNode({
                   command={it.command}
                   running={runningLabels.has(`${dirName}:${it.name}`)}
                   onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+                  onView={() => onView(`${dirName}:${it.name}`)}
                 />
               ))}
             </div>
