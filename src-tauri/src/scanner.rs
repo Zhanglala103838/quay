@@ -8,7 +8,7 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     if !p.is_dir() {
         return ScanResult { commands: vec![], dir_exists: false, detected_sources: vec![] };
     }
-    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go, detect_make];
+    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go, detect_make, detect_compose];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
         commands.extend(d(p));
@@ -114,6 +114,22 @@ fn detect_go(dir: &Path) -> Vec<Command> {
         ("go run .", "dev"),
         ("go build ./...", "build"),
         ("go test ./...", "test"),
+    ])
+}
+
+fn detect_compose(dir: &Path) -> Vec<Command> {
+    let has = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]
+        .iter()
+        .any(|f| dir.join(f).is_file());
+    if !has {
+        return vec![];
+    }
+    fixed("compose", &[
+        ("docker compose up", "dev"),
+        ("docker compose up -d", "dev"),
+        ("docker compose down", "other"),
+        ("docker compose logs -f", "other"),
+        ("docker compose ps", "other"),
     ])
 }
 
@@ -264,5 +280,18 @@ mod tests {
         assert!(names.contains(&"make build") && names.contains(&"make test"));
         // 不把变量/伪目标/缩进配方行当成 target
         assert!(!names.iter().any(|n| n.contains("VAR") || n.contains(".PHONY") || n.contains("echo")));
+    }
+
+    #[test]
+    fn compose_offers_up_down_logs() {
+        let d = tmp("compose");
+        fs::write(d.join("docker-compose.yml"), "services: {}\n").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"docker compose up") && cmds.contains(&"docker compose down"));
+        assert_eq!(
+            r.commands.iter().find(|c| c.command == "docker compose up").unwrap().category,
+            "dev"
+        );
     }
 }
