@@ -8,7 +8,7 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     if !p.is_dir() {
         return ScanResult { commands: vec![], dir_exists: false, detected_sources: vec![] };
     }
-    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go];
+    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go, detect_make];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
         commands.extend(d(p));
@@ -117,6 +117,56 @@ fn detect_go(dir: &Path) -> Vec<Command> {
     ])
 }
 
+fn detect_make(dir: &Path) -> Vec<Command> {
+    let path = ["Makefile", "makefile"]
+        .iter()
+        .map(|f| dir.join(f))
+        .find(|p| p.is_file());
+    let path = match path {
+        Some(p) => p,
+        None => return vec![],
+    };
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return vec![],
+    };
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for line in text.lines() {
+        // 配方行(以 tab/空格开头)、注释、无冒号行跳过
+        if line.starts_with(|c: char| c.is_whitespace()) || line.starts_with('#') {
+            continue;
+        }
+        let colon = match line.find(':') {
+            Some(i) => i,
+            None => continue,
+        };
+        let name = line[..colon].trim();
+        let after = &line[colon..];
+        // 变量赋值(:=)、伪目标(.xxx)、模式(%)、含空白或变量引用的多目标 → 跳过
+        if name.is_empty()
+            || name.starts_with('.')
+            || name.contains('=')
+            || name.contains('%')
+            || name.contains('$')
+            || name.contains(char::is_whitespace)
+            || after.starts_with(":=")
+        {
+            continue;
+        }
+        if !seen.insert(name.to_string()) {
+            continue;
+        }
+        out.push(Command {
+            name: format!("make {name}"),
+            command: format!("make {name}"),
+            source: "make".to_string(),
+            category: String::new(),
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +249,20 @@ mod tests {
         let r = scan_directory(d.to_str().unwrap());
         let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
         assert!(cmds.contains(&"go run .") && cmds.contains(&"go test ./..."));
+    }
+
+    #[test]
+    fn make_parses_top_level_targets() {
+        let d = tmp("make");
+        fs::write(
+            d.join("Makefile"),
+            "VAR := 1\n.PHONY: build\nbuild:\n\tgo build\ntest:\n\tgo test\n\t@echo done\n",
+        )
+        .unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let names: Vec<&str> = r.commands.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"make build") && names.contains(&"make test"));
+        // 不把变量/伪目标/缩进配方行当成 target
+        assert!(!names.iter().any(|n| n.contains("VAR") || n.contains(".PHONY") || n.contains("echo")));
     }
 }
