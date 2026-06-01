@@ -1,4 +1,3 @@
-export interface Script { name: string; command: string }
 export interface Command { name: string; command: string; source: string; category: string }
 export interface Directory { id: string; path: string }
 export interface CommandEntry {
