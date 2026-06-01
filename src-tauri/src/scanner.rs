@@ -10,7 +10,7 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     }
     let detectors: &[fn(&Path) -> Vec<Command>] = &[
         detect_npm, detect_cargo, detect_go, detect_make, detect_compose,
-        detect_composer, detect_maven, detect_gradle,
+        detect_composer, detect_maven, detect_gradle, detect_python,
     ];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
@@ -197,6 +197,60 @@ fn detect_gradle(dir: &Path) -> Vec<Command> {
         out.insert(0, Command { name: format!("{g} bootRun"), command: format!("{g} bootRun"), source: "gradle".into(), category: "dev".into() });
     }
     out
+}
+
+fn detect_python(dir: &Path) -> Vec<Command> {
+    // Django
+    if dir.join("manage.py").is_file() {
+        return vec![
+            Command { name: "python manage.py runserver".into(), command: "python manage.py runserver".into(), source: "python".into(), category: "dev".into() },
+            Command { name: "python manage.py migrate".into(), command: "python manage.py migrate".into(), source: "python".into(), category: "data".into() },
+            Command { name: "python manage.py test".into(), command: "python manage.py test".into(), source: "python".into(), category: "test".into() },
+        ];
+    }
+    // poetry scripts（best-effort 行解析）
+    let pp = dir.join("pyproject.toml");
+    if pp.is_file() {
+        if let Ok(text) = std::fs::read_to_string(&pp) {
+            let mut out = Vec::new();
+            let mut in_section = false;
+            for line in text.lines() {
+                let t = line.trim();
+                if t.starts_with('[') {
+                    in_section = t == "[tool.poetry.scripts]";
+                    continue;
+                }
+                if in_section {
+                    if let Some(eq) = t.find('=') {
+                        let key = t[..eq].trim().trim_matches('"');
+                        if !key.is_empty() {
+                            out.push(Command {
+                                name: format!("poetry run {key}"),
+                                command: format!("poetry run {key}"),
+                                source: "python".into(),
+                                category: String::new(),
+                            });
+                        }
+                    }
+                }
+            }
+            if !out.is_empty() {
+                return out;
+            }
+        }
+    }
+    // 兜底：单文件入口
+    for f in ["main.py", "app.py"] {
+        if dir.join(f).is_file() {
+            return vec![Command {
+                name: format!("python {f}"),
+                command: format!("python {f}"),
+                source: "python".into(),
+                category: "dev".into(),
+            }];
+        }
+    }
+    vec![]
 }
 
 fn detect_make(dir: &Path) -> Vec<Command> {
@@ -389,6 +443,35 @@ mod tests {
         let r = scan_directory(d.to_str().unwrap());
         let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
         assert!(cmds.contains(&"./gradlew bootRun") && cmds.contains(&"./gradlew build"));
+    }
+
+    #[test]
+    fn python_django_manage_py() {
+        let d = tmp("py_django");
+        fs::write(d.join("manage.py"), "# django").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"python manage.py runserver"));
+    }
+
+    #[test]
+    fn python_poetry_scripts() {
+        let d = tmp("py_poetry");
+        fs::write(d.join("pyproject.toml"), "[tool.poetry.scripts]\nserve = \"app:main\"\n").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"poetry run serve"));
+    }
+
+    #[test]
+    fn python_fallback_main_py() {
+        let d = tmp("py_main");
+        fs::write(d.join("requirements.txt"), "flask\n").unwrap();
+        fs::write(d.join("main.py"), "print(1)").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        // requirements.txt 不触发；main.py 兜底
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"python main.py"));
     }
 
     #[test]
