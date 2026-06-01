@@ -10,7 +10,7 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     }
     let detectors: &[fn(&Path) -> Vec<Command>] = &[
         detect_npm, detect_cargo, detect_go, detect_make, detect_compose,
-        detect_composer, detect_maven, detect_gradle, detect_python,
+        detect_php, detect_maven, detect_gradle, detect_python,
     ];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
@@ -96,6 +96,16 @@ fn fixed(source: &str, items: &[(&str, &str)]) -> Vec<Command> {
         .collect()
 }
 
+/// 单条固定命令（name == command）。
+fn one(command: &str, source: &str, category: &str) -> Command {
+    Command {
+        name: command.to_string(),
+        command: command.to_string(),
+        source: source.to_string(),
+        category: category.to_string(),
+    }
+}
+
 fn detect_cargo(dir: &Path) -> Vec<Command> {
     if !dir.join("Cargo.toml").is_file() {
         return vec![];
@@ -136,18 +146,26 @@ fn detect_compose(dir: &Path) -> Vec<Command> {
     ])
 }
 
-fn detect_composer(dir: &Path) -> Vec<Command> {
+/// PHP 项目。source 统一 "php"(语言级身份,比 "composer" 对用户更直观)。
+/// PHP 的启动命令是框架特定的(Laravel artisan / ThinkPHP think / 通用 php -S),
+/// 而非像 npm 那样写在 composer.json scripts——故框架识别优先,composer 脚本仅作补充且过滤生命周期钩子。
+fn detect_php(dir: &Path) -> Vec<Command> {
     let mut out = Vec::new();
+
+    // composer.json 自定义脚本:排除生命周期钩子(pre-*/post-*,由 composer 自动触发,不是用户启动命令)。
     let cj = dir.join("composer.json");
     if cj.is_file() {
         if let Ok(text) = std::fs::read_to_string(&cj) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                 if let Some(obj) = v.get("scripts").and_then(|s| s.as_object()) {
                     for name in obj.keys() {
+                        if name.starts_with("pre-") || name.starts_with("post-") {
+                            continue;
+                        }
                         out.push(Command {
                             name: name.clone(),
                             command: format!("composer run {name}"),
-                            source: "composer".to_string(),
+                            source: "php".to_string(),
                             category: String::new(),
                         });
                     }
@@ -155,10 +173,26 @@ fn detect_composer(dir: &Path) -> Vec<Command> {
             }
         }
     }
+
+    // Laravel(artisan 控制台入口)
     if dir.join("artisan").is_file() {
-        out.push(Command { name: "php artisan serve".into(), command: "php artisan serve".into(), source: "composer".into(), category: "dev".into() });
-        out.push(Command { name: "php artisan migrate".into(), command: "php artisan migrate".into(), source: "composer".into(), category: "data".into() });
+        out.push(one("php artisan serve", "php", "dev"));
+        out.push(one("php artisan migrate", "php", "data"));
     }
+    // ThinkPHP(根目录 think 控制台入口)
+    if dir.join("think").is_file() {
+        out.push(one("php think run", "php", "dev"));
+    }
+
+    // 兜底:有 PHP 入口但未命中框架 → 内建开发服务器
+    if out.is_empty() {
+        if dir.join("public/index.php").is_file() {
+            out.push(one("php -S localhost:8000 -t public", "php", "dev"));
+        } else if dir.join("index.php").is_file() {
+            out.push(one("php -S localhost:8000", "php", "dev"));
+        }
+    }
+
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
 }
@@ -424,6 +458,45 @@ mod tests {
         let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
         assert!(cmds.contains(&"composer run lint"));
         assert!(cmds.contains(&"php artisan serve"));
+        assert_eq!(r.detected_sources, vec!["php"]);
+    }
+
+    #[test]
+    fn composer_lifecycle_hooks_filtered() {
+        // post-autoload-dump / pre-install-cmd 是 composer 自动触发的钩子,不是用户命令,应过滤掉
+        let d = tmp("composer_hooks");
+        fs::write(
+            d.join("composer.json"),
+            r#"{"scripts":{"post-autoload-dump":["@php think service:discover"],"test":"phpunit"}}"#,
+        )
+        .unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"composer run test"));
+        assert!(!cmds.iter().any(|c| c.contains("post-autoload-dump")));
+    }
+
+    #[test]
+    fn thinkphp_think_offers_run() {
+        // ThinkPHP 项目:根目录有 think 控制台入口,且 composer scripts 只有钩子 → 应给出 php think run
+        let d = tmp("thinkphp");
+        fs::write(d.join("composer.json"), r#"{"scripts":{"post-autoload-dump":["@php think service:discover"]}}"#).unwrap();
+        fs::write(d.join("think"), "#!/usr/bin/env php").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"php think run"));
+        assert!(!cmds.iter().any(|c| c.contains("post-autoload-dump")));
+    }
+
+    #[test]
+    fn php_generic_fallback_built_in_server() {
+        // 无框架但有 public/index.php → php -S 兜底
+        let d = tmp("php_generic");
+        fs::create_dir_all(d.join("public")).unwrap();
+        fs::write(d.join("public/index.php"), "<?php").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"php -S localhost:8000 -t public"));
     }
 
     #[test]
