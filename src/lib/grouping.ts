@@ -1,4 +1,4 @@
-import type { Script } from './types'
+import type { Command } from './types'
 
 /// 命令树两层分组：
 ///  Tier 1 语义类别（开发/测试/构建/部署/数据/其他）—— 按关键词匹配脚本名
@@ -8,6 +8,7 @@ import type { Script } from './types'
 export interface CmdLeaf {
   name: string
   command: string
+  source: string
 }
 export interface PrefixGroup {
   prefix: string
@@ -49,12 +50,16 @@ function categoryOf(name: string): string {
   return OTHER.key
 }
 
-/// 把脚本归类 → 每类内按首段前缀子分组。返回非空类别(保持规则顺序)。
-export function categorize(scripts: Script[]): Category[] {
-  const byCat = new Map<string, Script[]>()
-  for (const s of scripts) {
-    const c = categoryOf(s.name)
-    ;(byCat.get(c) ?? byCat.set(c, []).get(c)!).push(s)
+function catKeyOf(c: Command): string {
+  return c.category && c.category.length ? c.category : categoryOf(c.name)
+}
+
+/// 把命令归类 → 每类内按首段前缀子分组。返回非空类别(保持规则顺序)。
+export function categorize(commands: Command[]): Category[] {
+  const byCat = new Map<string, Command[]>()
+  for (const c of commands) {
+    const k = catKeyOf(c)
+    ;(byCat.get(k) ?? byCat.set(k, []).get(k)!).push(c)
   }
 
   const order = [...CATEGORY_RULES.map((r) => ({ key: r.key, label: r.label })), OTHER]
@@ -64,11 +69,10 @@ export function categorize(scripts: Script[]): Category[] {
     const list = byCat.get(key)
     if (!list?.length) continue
 
-    // 按首段前缀聚合
     const byPrefix = new Map<string, CmdLeaf[]>()
-    for (const s of list) {
-      const prefix = s.name.split(':')[0]
-      const leaf: CmdLeaf = { name: s.name, command: s.command }
+    for (const c of list) {
+      const prefix = c.name.split(':')[0]
+      const leaf: CmdLeaf = { name: c.name, command: c.command, source: c.source }
       ;(byPrefix.get(prefix) ?? byPrefix.set(prefix, []).get(prefix)!).push(leaf)
     }
 
