@@ -66,7 +66,9 @@ export async function testConnection(): Promise<{ ok: boolean; message: string }
 // ── 智能分组 ──────────────────────────────────────────────
 function groupCacheKey(commands: Command[]) {
   const { model } = useSettings.getState().deepseek
-  return `quay.aigroup.${model}.${commands.map((s) => s.name).sort().join('|')}`
+  // v2：leaf 结构升级（Command 模型带 source + 完整执行串 `pnpm run dev`）。
+  // 旧版本(v1)缓存的 leaf 无 source、command 是原始脚本体(如 `vite`)会跑错命令,故 bump 版本作废旧缓存。
+  return `quay.aigroup.v2.${model}.${commands.map((s) => s.name).sort().join('|')}`
 }
 
 function stripFences(s: string) {

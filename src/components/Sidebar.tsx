@@ -373,6 +373,7 @@ function PrefixGroupNode({
   group,
   dirName,
   path,
+  multiSource,
   onRun,
   onView,
   runningLabels,
@@ -380,6 +381,7 @@ function PrefixGroupNode({
   group: PrefixGroup
   dirName: string
   path: string
+  multiSource: boolean
   onRun: RunFn
   onView: (label: string) => void
   runningLabels: Set<string>
@@ -404,7 +406,7 @@ function PrefixGroupNode({
               key={it.name}
               display={it.name === group.prefix ? it.name : it.name.slice(group.prefix.length + 1)}
               command={it.command}
-              source={it.source}
+              source={multiSource ? it.source : undefined}
               running={runningLabels.has(`${dirName}:${it.name}`)}
               onRun={() => onRun(`${dirName}:${it.name}`, path, it.command)}
               onView={() => onView(`${dirName}:${it.name}`)}
@@ -434,6 +436,9 @@ function DirNode({
   onRemove?: () => void
 }) {
   const [commands, setCommands] = useState<Command[]>([])
+  // 该目录检测到的工具链(pnpm / cargo / go…)。包管理器是项目级属性,
+  // 在目录头集中展示一次;只有多工具链(如 go+make)时才下放到每条命令区分。
+  const [sources, setSources] = useState<string[]>([])
   const [warn, setWarn] = useState('')
   const [open, setOpen] = useState(false) // 目录默认收起
   const configured = useSettings((s) => s.configured)
@@ -457,6 +462,7 @@ function DirNode({
     const applyScan = (r: ScanResult) => {
       if (!active) return
       setCommands(r.commands)
+      setSources(r.detectedSources)
       if (!r.dirExists) {
         setWarn('目录不存在或无访问权限(检查 macOS 系统设置 → 隐私与安全性 → 文件和文件夹 / 完整磁盘访问)')
       } else if (r.detectedSources.length === 0) {
@@ -512,6 +518,9 @@ function DirNode({
   const dirName = path.split('/').filter(Boolean).pop() || path
   const categories = aiMode && aiCats ? aiCats : categorize(commands)
   const dirRunning = commands.filter((s) => runningLabels.has(`${dirName}:${s.name}`)).length
+  // 单一工具链时,包管理器在目录头展示一次即可,不在每条命令重复(噪声);
+  // 多工具链(go+make / npm+composer)才下放到命令级区分来源。
+  const multiSource = sources.length > 1
 
   return (
     <div className="dir">
@@ -520,6 +529,9 @@ function DirNode({
         <span className="chevron">{open ? '▾' : '▸'}</span>
         <span className="dir-icon">📁</span>
         <span className="dir-name">{dirName}</span>
+        {sources.map((s) => (
+          <span className="dir-source" key={s}>{s}</span>
+        ))}
         {commands.length > 0 && <span className="dir-count">{commands.length}</span>}
         {dirRunning > 0 && <span className="activity-dot" />}
         {/* 右侧操作区:开终端 / VSCode / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
@@ -581,6 +593,7 @@ function DirNode({
                   group={g}
                   dirName={dirName}
                   path={path}
+                  multiSource={multiSource}
                   onRun={onRun}
                   onView={onView}
                   runningLabels={runningLabels}
@@ -591,7 +604,7 @@ function DirNode({
                   key={it.name}
                   display={it.name}
                   command={it.command}
-                  source={it.source}
+                  source={multiSource ? it.source : undefined}
                   running={runningLabels.has(`${dirName}:${it.name}`)}
                   onRun={() => onRun(`${dirName}:${it.name}`, path, it.command)}
                   onView={() => onView(`${dirName}:${it.name}`)}
