@@ -752,6 +752,21 @@ html.resizing .runtabs {
   white-space: nowrap;
 }
 
+/* 命令来源工具链小标(npm/pnpm/cargo/go/make/compose/composer/maven/gradle/python)。
+   .cmd-name 是 flex:1,会把它顶到右侧;低调灰药丸,不与绿色"运行中"标抢视线。 */
+.cmd-source {
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  background: rgba(150, 160, 180, 0.12);
+  border: 1px solid rgba(150, 160, 180, 0.2);
+  border-radius: 99px;
+  padding: 0 6px;
+  line-height: 14px;
+  text-transform: lowercase;
+}
+
 /* HeroUI Tooltip.Trigger 默认 inline-block,会按内容宽度撑开而绕过 .cmd 的收缩约束;
    只对包裹命令行的那层强制块级 + 可收缩,长命令名才能 ellipsis 而非撑破侧栏。
    :has 精确命中,不影响按钮/目录头的 tooltip。 */
