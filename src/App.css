@@ -2486,3 +2486,16 @@ html.resizing .runtabs {
 .ai-edit-fields { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
 .cmd-ai-tag { font-size: 10px; margin-left: 2px; opacity: 0.85; }
+
+/* 发送前文件确认弹窗 */
+.modal-box.ai-context { width: min(600px, 92vw); }
+.ai-ctx-note { color: var(--muted, #8a8a8a); font-size: 11.5px; line-height: 1.5; margin: 2px 0 8px; }
+.ai-ctx-list { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.ai-ctx-row { border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 10px; }
+.ai-ctx-row.off { opacity: 0.42; }
+.ai-ctx-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ai-ctx-path { font-family: 'JetBrains Mono Variable', monospace; font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-ctx-size { color: var(--muted, #8a8a8a); font-size: 10.5px; white-space: nowrap; }
+.ai-ctx-toggle { background: none; border: none; color: var(--muted, #8a8a8a); cursor: pointer; font-size: 11px; white-space: nowrap; }
+.ai-ctx-content { margin: 6px 0 0; max-height: 200px; overflow: auto; background: rgba(0,0,0,0.28); border-radius: 6px; padding: 8px; font-family: 'JetBrains Mono Variable', monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.ai-ctx-foot { color: var(--muted, #8a8a8a); font-size: 11px; margin: 10px 0 0; }

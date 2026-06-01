@@ -3,11 +3,12 @@ import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
 import { scanDir, watchDir, unwatchDir, collectContext } from '../lib/ipc'
 import { listen } from '@tauri-apps/api/event'
-import type { Command, ScanResult, CommandEntry, Proposal } from '../lib/types'
+import type { Command, ScanResult, CommandEntry, Proposal, ProjectContext } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
 import { AiProposeModal } from './AiProposeModal'
+import { AiContextModal } from './AiContextModal'
 import { InputModal } from './InputModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
@@ -467,13 +468,36 @@ function DirNode({
   const [proposing, setProposing] = useState(false)
   const [proposals, setProposals] = useState<Proposal[] | null>(null)
   const [proposeErr, setProposeErr] = useState('')
+  // 发送前确认:本地采集到的上下文,先让用户勾选要发哪些文件,再调 LLM。
+  const [pendingCtx, setPendingCtx] = useState<ProjectContext | null>(null)
 
+  // 第一步:本地采集(纯本地,不联网)→ 打开"发送前确认"弹窗。
   const runAiRecognize = async () => {
     setProposing(true)
     setProposeErr('')
     try {
       const ctx = await collectContext(path)
-      const list = await proposeCommands(ctx)
+      setPendingCtx(ctx)
+    } catch (e) {
+      setProposeErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setProposing(false)
+    }
+  }
+
+  // 第二步:用户确认要发的文件 → 只把勾选的文件交给 LLM(目录树照旧全发)。
+  const startRecognize = async (selectedRelPaths: string[]) => {
+    if (!pendingCtx) return
+    const allow = new Set(selectedRelPaths)
+    const filtered: ProjectContext = {
+      ...pendingCtx,
+      files: pendingCtx.files.filter((f) => allow.has(f.relPath)),
+    }
+    setPendingCtx(null)
+    setProposing(true)
+    setProposeErr('')
+    try {
+      const list = await proposeCommands(filtered)
       setProposals(list)
     } catch (e) {
       setProposeErr(e instanceof Error ? e.message : String(e))
@@ -504,6 +528,7 @@ function DirNode({
     setProposals(null)
     setProposeErr('')
     setProposing(false)
+    setPendingCtx(null)
 
     const applyScan = (r: ScanResult) => {
       if (!active) return
@@ -676,6 +701,13 @@ function DirNode({
             </div>
           ))}
         </div>
+      )}
+      {pendingCtx !== null && (
+        <AiContextModal
+          context={pendingCtx}
+          onConfirm={startRecognize}
+          onCancel={() => setPendingCtx(null)}
+        />
       )}
       {proposals !== null && (
         <AiProposeModal
