@@ -144,7 +144,7 @@ export function Sidebar({
             ))}
 
             {p.manualCommands.length > 0 && (
-              <div className="cat">
+              <div className="cat manual-cat">
                 <div className="cat-label">手动</div>
                 {p.manualCommands.map((m) => (
                   <CmdRow

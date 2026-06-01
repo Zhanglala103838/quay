@@ -2487,6 +2487,14 @@ html.resizing .runtabs {
 .ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
 .cmd-ai-tag { font-size: 10px; margin-left: 2px; opacity: 0.85; }
 
+/* 手动/AI 命令在数据上是项目级,但视觉上要缩进到「命令」层级——与目录展开后的扫描命令对齐,
+   带左侧引导线,避免和目录行(.dir)同级被误读成目录的兄弟项。 */
+.manual-cat {
+  margin: 2px 0 4px 8px;
+  padding-left: 6px;
+  border-left: 1px solid var(--glass-border);
+}
+
 /* 发送前文件确认弹窗 */
 .modal-box.ai-context { width: min(600px, 92vw); }
 .ai-ctx-note { color: var(--muted, #8a8a8a); font-size: 11.5px; line-height: 1.5; margin: 2px 0 8px; }
