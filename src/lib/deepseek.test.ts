@@ -31,6 +31,13 @@ describe('parseProposals', () => {
     expect(out.map((p) => p.name)).toEqual(['a'])
   })
 
+  it('cwd 带尾斜杠也能命中 tree 目录（去尾斜杠归一）', () => {
+    const raw = JSON.stringify({ commands: [{ name: 'a', command: 'mvn', cwd: 'api/', why: '' }] })
+    const out = parseProposals(raw, ctx(['api/', 'api/pom.xml']))
+    expect(out.map((p) => p.name)).toEqual(['a'])
+    expect(out[0].cwd).toBe('api')
+  })
+
   it('cwd 为 . 归一为根空串', () => {
     const raw = JSON.stringify({ commands: [{ name: 'a', command: 'make', cwd: '.', why: '' }] })
     expect(parseProposals(raw, ctx([]))[0].cwd).toBe('')

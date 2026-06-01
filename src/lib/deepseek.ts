@@ -99,7 +99,8 @@ export function parseProposals(raw: string, ctx: ProjectContext): Proposal[] {
     const p = item as Record<string, unknown>
     const name = String(p?.name ?? '').trim()
     const command = String(p?.command ?? '').trim()
-    let cwd = String(p?.cwd ?? '').trim()
+    // 去尾斜杠归一：LLM 可能返回 `api/`，而 dirs 集合是去尾斜杠的目录(如 `api`)，否则会误判不命中而丢弃。
+    let cwd = String(p?.cwd ?? '').trim().replace(/\/+$/, '')
     const why = String(p?.why ?? '').trim()
     if (cwd === '.') cwd = ''
     if (!name || !command) continue
