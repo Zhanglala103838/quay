@@ -11,6 +11,10 @@ interface FileRow {
   expanded: boolean
 }
 
+/// 真实 UTF-8 字节数(与 Rust 端按字节截断一致;CJK 字符数≠字节数,直接用 .length 会少报)。
+function byteLen(s: string) {
+  return new TextEncoder().encode(s).length
+}
 function fmtSize(n: number) {
   return n < 1024 ? `${n}B` : `${(n / 1024).toFixed(1)}KB`
 }
@@ -53,7 +57,7 @@ export function AiContextModal({
                   />
                   <span className="ai-ctx-path">{r.relPath}</span>
                   <span className="ai-ctx-size">
-                    {fmtSize(r.content.length)}
+                    {fmtSize(byteLen(r.content))}
                     {r.truncated ? ' · 已截断' : ''}
                   </span>
                   <button
