@@ -8,7 +8,10 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     if !p.is_dir() {
         return ScanResult { commands: vec![], dir_exists: false, detected_sources: vec![] };
     }
-    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go, detect_make, detect_compose];
+    let detectors: &[fn(&Path) -> Vec<Command>] = &[
+        detect_npm, detect_cargo, detect_go, detect_make, detect_compose,
+        detect_composer, detect_maven, detect_gradle,
+    ];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
         commands.extend(d(p));
@@ -131,6 +134,69 @@ fn detect_compose(dir: &Path) -> Vec<Command> {
         ("docker compose logs -f", "other"),
         ("docker compose ps", "other"),
     ])
+}
+
+fn detect_composer(dir: &Path) -> Vec<Command> {
+    let mut out = Vec::new();
+    let cj = dir.join("composer.json");
+    if cj.is_file() {
+        if let Ok(text) = std::fs::read_to_string(&cj) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(obj) = v.get("scripts").and_then(|s| s.as_object()) {
+                    for name in obj.keys() {
+                        out.push(Command {
+                            name: name.clone(),
+                            command: format!("composer run {name}"),
+                            source: "composer".to_string(),
+                            category: String::new(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    if dir.join("artisan").is_file() {
+        out.push(Command { name: "php artisan serve".into(), command: "php artisan serve".into(), source: "composer".into(), category: "dev".into() });
+        out.push(Command { name: "php artisan migrate".into(), command: "php artisan migrate".into(), source: "composer".into(), category: "data".into() });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+fn detect_maven(dir: &Path) -> Vec<Command> {
+    if !dir.join("pom.xml").is_file() {
+        return vec![];
+    }
+    let mut out = fixed("maven", &[
+        ("mvn clean install", "build"),
+        ("mvn test", "test"),
+    ]);
+    if let Ok(text) = std::fs::read_to_string(dir.join("pom.xml")) {
+        if text.contains("spring-boot") {
+            out.insert(0, Command { name: "mvn spring-boot:run".into(), command: "mvn spring-boot:run".into(), source: "maven".into(), category: "dev".into() });
+        }
+    }
+    out
+}
+
+fn detect_gradle(dir: &Path) -> Vec<Command> {
+    let has = dir.join("build.gradle").is_file() || dir.join("build.gradle.kts").is_file();
+    if !has {
+        return vec![];
+    }
+    let g = if dir.join("gradlew").is_file() { "./gradlew" } else { "gradle" };
+    let mut out = vec![
+        Command { name: format!("{g} build"), command: format!("{g} build"), source: "gradle".into(), category: "build".into() },
+        Command { name: format!("{g} test"), command: format!("{g} test"), source: "gradle".into(), category: "test".into() },
+    ];
+    let bootish = [dir.join("build.gradle"), dir.join("build.gradle.kts")]
+        .iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .any(|t| t.contains("org.springframework.boot"));
+    if bootish {
+        out.insert(0, Command { name: format!("{g} bootRun"), command: format!("{g} bootRun"), source: "gradle".into(), category: "dev".into() });
+    }
+    out
 }
 
 fn detect_make(dir: &Path) -> Vec<Command> {
@@ -293,5 +359,50 @@ mod tests {
             r.commands.iter().find(|c| c.command == "docker compose up").unwrap().category,
             "dev"
         );
+    }
+
+    #[test]
+    fn composer_scripts_and_artisan() {
+        let d = tmp("composer");
+        fs::write(d.join("composer.json"), r#"{"scripts":{"lint":"phpcs"}}"#).unwrap();
+        fs::write(d.join("artisan"), "#!/usr/bin/env php").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"composer run lint"));
+        assert!(cmds.contains(&"php artisan serve"));
+    }
+
+    #[test]
+    fn maven_springboot_adds_run() {
+        let d = tmp("maven");
+        fs::write(d.join("pom.xml"), "<project><dependency>spring-boot-starter</dependency></project>").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"mvn spring-boot:run") && cmds.contains(&"mvn test"));
+    }
+
+    #[test]
+    fn gradle_uses_wrapper_when_present() {
+        let d = tmp("gradle");
+        fs::write(d.join("build.gradle"), "plugins { id 'org.springframework.boot' }").unwrap();
+        fs::write(d.join("gradlew"), "#!/bin/sh").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"./gradlew bootRun") && cmds.contains(&"./gradlew build"));
+    }
+
+    #[test]
+    fn name_collision_gets_source_suffix() {
+        // npm 与 composer 同名脚本 → 第二个加 source 后缀，label 唯一
+        let d = tmp("collide");
+        fs::write(d.join("package.json"), r#"{"scripts":{"lint":"eslint"}}"#).unwrap();
+        fs::write(d.join("composer.json"), r#"{"scripts":{"lint":"phpcs"}}"#).unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let names: Vec<&str> = r.commands.iter().map(|c| c.name.as_str()).collect();
+        let lint_count = names.iter().filter(|n| n.starts_with("lint")).count();
+        assert_eq!(lint_count, 2);
+        // 唯一性：无重复 name
+        let uniq: HashSet<&str> = names.iter().copied().collect();
+        assert_eq!(uniq.len(), names.len());
     }
 }
