@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
-import { scanDir, watchDir, unwatchDir } from '../lib/ipc'
+import { scanDir, watchDir, unwatchDir, collectContext } from '../lib/ipc'
 import { listen } from '@tauri-apps/api/event'
-import type { Command, ScanResult, CommandEntry } from '../lib/types'
+import type { Command, ScanResult, CommandEntry, Proposal } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
-import { smartGroup, explainCommand } from '../lib/deepseek'
+import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
+import { AiProposeModal } from './AiProposeModal'
 import { InputModal } from './InputModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
@@ -123,6 +124,7 @@ export function Sidebar({
             {p.directories.map((d) => (
               <DirNode
                 key={d.id}
+                projectId={p.id}
                 path={d.path}
                 onRun={onRun}
                 onView={viewRun}
@@ -148,6 +150,7 @@ export function Sidebar({
                     key={m.id}
                     display={m.label}
                     command={`${m.command} · ${m.cwd}`}
+                    origin={m.origin}
                     running={runningLabels.has(m.label)}
                     onRun={() => onRun(m.label, m.cwd, m.command)}
                     onView={() => viewRun(m.label)}
@@ -250,6 +253,7 @@ function CmdRow({
   display,
   command,
   source,
+  origin,
   running,
   onRun,
   onView,
@@ -259,6 +263,7 @@ function CmdRow({
   display: string
   command: string
   source?: string
+  origin?: 'ai'
   running: boolean
   onRun: () => void
   onView?: () => void
@@ -331,6 +336,7 @@ function CmdRow({
       >
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
         <span className="cmd-name">{display}</span>
+        {origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">✨</span>}
         {source && <span className="cmd-source">{source}</span>}
         {running && <span className="cmd-running-tag">运行中</span>}
         {configured && (
@@ -419,6 +425,7 @@ function PrefixGroupNode({
 }
 
 function DirNode({
+  projectId,
   path,
   onRun,
   onView,
@@ -427,6 +434,7 @@ function DirNode({
   runningLabels,
   onRemove,
 }: {
+  projectId: string
   path: string
   onRun: RunFn
   onView: (label: string) => void
@@ -454,6 +462,39 @@ function DirNode({
       localStorage.setItem(aiModeKey, next ? '1' : '0')
       return next
     })
+
+  const addManualCommand = useStore((s) => s.addManualCommand)
+  const [proposing, setProposing] = useState(false)
+  const [proposals, setProposals] = useState<Proposal[] | null>(null)
+  const [proposeErr, setProposeErr] = useState('')
+
+  const runAiRecognize = async () => {
+    setProposing(true)
+    setProposeErr('')
+    try {
+      const ctx = await collectContext(path)
+      const list = await proposeCommands(ctx)
+      setProposals(list)
+    } catch (e) {
+      setProposeErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setProposing(false)
+    }
+  }
+
+  // 把相对 cwd 解析为绝对路径(空=绑定根)。
+  const joinCwd = (rel: string) => {
+    const r = rel.trim().replace(/^\.?\/?/, '')
+    if (!r) return path
+    return `${path.replace(/\/+$/, '')}/${r}`
+  }
+
+  const landProposals = (selected: Proposal[]) => {
+    for (const p of selected) {
+      addManualCommand(projectId, p.name, joinCwd(p.cwd), p.command, 'ai')
+    }
+    setProposals(null)
+  }
 
   useEffect(() => {
     let active = true
@@ -563,26 +604,43 @@ function DirNode({
 
       {open && (
         <div className="dir-body">
-          {configured && commands.length > 0 && (
+          {configured && (
             <div className="dir-toolbar">
+              {commands.length > 0 && (
+                <button
+                  className={'ai-btn' + (aiMode ? ' active' : '')}
+                  disabled={aiState === 'loading'}
+                  onClick={toggleAi}
+                  aria-label="用 DeepSeek 智能重新分组命令"
+                >
+                  {aiState === 'loading' ? (
+                    <>
+                      <span className="ai-spinner" /> 分组中…
+                    </>
+                  ) : aiMode ? (
+                    '✨ AI 分组 · 开'
+                  ) : (
+                    '✨ AI 智能分组'
+                  )}
+                </button>
+              )}
               <button
-                className={'ai-btn' + (aiMode ? ' active' : '')}
-                disabled={aiState === 'loading'}
-                onClick={toggleAi}
-                aria-label="用 DeepSeek 智能重新分组命令"
+                className={'ai-btn' + (commands.length === 0 ? ' suggest' : '')}
+                disabled={proposing}
+                onClick={runAiRecognize}
+                aria-label="用 AI 读项目结构,提议可运行命令"
               >
-                {aiState === 'loading' ? (
+                {proposing ? (
                   <>
-                    <span className="ai-spinner" /> 分组中…
+                    <span className="ai-spinner" /> AI 识别中…
                   </>
-                ) : aiMode ? (
-                  '✨ AI 分组 · 开'
                 ) : (
-                  '✨ AI 智能分组'
+                  '✨ 让 AI 识别'
                 )}
               </button>
             </div>
           )}
+          {proposeErr && <div className="warn">{proposeErr}</div>}
           {warn && <div className="warn">{warn}</div>}
           {categories.map((cat) => (
             <div className="cat" key={cat.key}>
@@ -613,6 +671,13 @@ function DirNode({
             </div>
           ))}
         </div>
+      )}
+      {proposals !== null && (
+        <AiProposeModal
+          proposals={proposals}
+          onConfirm={landProposals}
+          onCancel={() => setProposals(null)}
+        />
       )}
     </div>
   )

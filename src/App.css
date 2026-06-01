@@ -2474,3 +2474,4 @@ html.resizing .runtabs {
 .ai-row-why { margin-top: 4px; color: var(--muted, #8a8a8a); font-size: 11px; line-height: 1.4; }
 .ai-edit-fields { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
+.cmd-ai-tag { font-size: 10px; margin-left: 2px; opacity: 0.85; }
