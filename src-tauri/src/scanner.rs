@@ -13,11 +13,18 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     for d in detectors {
         commands.extend(d(p));
     }
-    // 去重：同 name 冲突时给后者加 source 后缀，保证前端 label 唯一
+    // 去重：同 name 冲突时给后者加 source 后缀，仍冲突则追加序号，保证前端 label 唯一。
     let mut seen: HashSet<String> = HashSet::new();
     for c in commands.iter_mut() {
-        if !seen.insert(c.name.clone()) {
-            c.name = format!("{} ({})", c.name, c.source);
+        if seen.contains(&c.name) {
+            let base = format!("{} ({})", c.name, c.source);
+            let mut name = base.clone();
+            let mut n = 2;
+            while seen.contains(&name) {
+                name = format!("{base} {n}");
+                n += 1;
+            }
+            c.name = name;
         }
         seen.insert(c.name.clone());
     }
