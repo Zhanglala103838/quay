@@ -2458,3 +2458,19 @@ html.resizing .runtabs {
     transform: translate(-50%, 0);
   }
 }
+
+/* AI 提议清单弹窗 */
+.modal-box.ai-propose { width: min(560px, 92vw); }
+.ai-empty { padding: 16px 4px; color: var(--muted, #8a8a8a); font-size: 13px; }
+.ai-propose-list { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.ai-row { border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 10px; }
+.ai-row.off { opacity: 0.45; }
+.ai-row-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ai-row-name { font-weight: 600; font-size: 13px; }
+.ai-edit-btn { margin-left: auto; background: none; border: none; color: var(--muted, #8a8a8a); cursor: pointer; font-size: 12px; }
+.ai-row-cmd { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.ai-row-cmd code { font-family: 'JetBrains Mono Variable', monospace; font-size: 12px; }
+.ai-row-cwd { color: var(--muted, #8a8a8a); font-size: 11px; }
+.ai-row-why { margin-top: 4px; color: var(--muted, #8a8a8a); font-size: 11px; line-height: 1.4; }
+.ai-edit-fields { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
