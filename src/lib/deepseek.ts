@@ -191,8 +191,8 @@ function proposeCacheKey(ctx: ProjectContext): string {
   const { model } = useSettings.getState().deepseek
   const sig = ctx.root + ' ' + ctx.tree.join('|') + ' ' +
     ctx.files.map((f) => `${f.relPath}:${f.content.length}`).join('|')
-  // v2：prompt 升级(优先常驻启动命令 + 多模块分服务)，作废 v1 旧缓存。
-  return `quay.aipropose.v2.${model}.${digest(sig)}`
+  // v3：prompt 升级(语言无关的「常驻 vs 一次性」判据,去掉栈特定示例锚定)，作废旧缓存。
+  return `quay.aipropose.v3.${model}.${digest(sig)}`
 }
 
 /// 喂项目上下文给 DeepSeek,提议可运行命令。带 localStorage 缓存(context 不变不重复调)。
@@ -206,15 +206,16 @@ export async function proposeCommands(ctx: ProjectContext): Promise<Proposal[]> 
     /* ignore */
   }
   const sys =
-    '你是项目运行专家,服务的工具是一个「开发进程控制塔」——它会拉起命令并常驻盯着内存/端口/状态。' +
-    '所以请优先提议能把项目「跑起来、常驻」的启动/开发命令(如 dev server、`mvn spring-boot:run`、`php think worker`、`go run .`、跑可执行 jar),' +
-    '这类对该工具最有价值;构建/测试类命令(如 `mvn clean install`、`npm run build`)价值较低,可作为补充但不要作为唯一一条。' +
-    '若是多模块/monorepo,请为每个「可独立跑起来的子服务」分别给出其启动命令(用各自的 cwd),而不是只给一条根目录的聚合构建。' +
-    '尽量给出多条候选(启动 + 构建 + 测试),让用户挑;但只提议你有明确证据支撑的命令,宁缺毋滥,不要猜测不存在的脚本。' +
-    '每条给:name(中文短标签,如「后端 API」),command(完整可执行命令串,如 `mvn spring-boot:run`),' +
-    'cwd(命令该在哪个子目录运行,用相对项目根的路径;就在根目录则空字符串),' +
+    '你是项目运行专家,服务任意语言/框架的项目(JS/TS、Python、Rust、Go、Java、PHP、Ruby、C# 等都可能)。' +
+    '你服务的工具是一个「开发进程控制塔」:它拉起命令并常驻盯着内存/端口/状态,所以它最需要能「跑起来并持续运行」的进程,而不是跑一下就退出的任务。' +
+    '判据看命令的运行时行为,与具体语言无关:' +
+    '①优先(高价值)——会长期常驻的命令:启动开发服务器、watch/热更新、启动服务或后台进程、本地预览等(各生态形态不同,按项目实际配置文件给出对应命令,不要套用其它语言的惯例)。' +
+    '②次要(补充,不要作为唯一一条)——一次性执行完即退出的命令:编译/构建、安装依赖、测试、lint、格式化、代码生成等。' +
+    '若是多模块/monorepo,为每个「可独立跑起来的子服务」分别给出其启动命令(各自的 cwd),而不是只给一条根目录的聚合命令。' +
+    '尽量给出多条候选(常驻启动 + 构建 + 测试),让用户挑;但只提议你有明确证据支撑的命令,宁缺毋滥,不要猜测不存在的脚本或框架约定。' +
+    '每条给:name(中文短标签),command(完整可执行命令串),cwd(命令该在哪个子目录运行,相对项目根;根目录则空字符串),' +
     'why(为什么是这条,引用你看到的文件证据,一句话)。' +
-    '只输出 JSON,形如 {"commands":[{"name":"后端 API","command":"mvn spring-boot:run","cwd":"gyj_admin/ch_backend","why":"该目录有 Spring Boot pom.xml,spring-boot-maven-plugin 可直接启动服务"}]}。'
+    '只输出 JSON。格式示意(仅示范字段结构,不代表语言/命令偏好):{"commands":[{"name":"开发服务器","command":"<完整命令>","cwd":"<相对子目录或空>","why":"<引用文件证据>"}]}。'
   const filesText = ctx.files
     .map((f) => `### ${f.relPath}${f.truncated ? '（已截断）' : ''}\n${f.content}`)
     .join('\n\n')
