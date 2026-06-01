@@ -25,6 +25,8 @@ pub struct CommandEntry {
     pub long: bool,
     #[serde(default, rename = "confirmBeforeRun")]
     pub confirm_before_run: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

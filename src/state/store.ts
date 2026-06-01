@@ -54,7 +54,7 @@ interface Store {
   addProject: (name: string) => void
   addDirectory: (projectId: string, path: string) => void
   removeDirectory: (projectId: string, dirId: string) => void
-  addManualCommand: (projectId: string, label: string, cwd: string, command: string) => void
+  addManualCommand: (projectId: string, label: string, cwd: string, command: string, origin?: 'ai') => void
   updateManualCommand: (
     projectId: string,
     cmdId: string,
@@ -125,11 +125,11 @@ export const useStore = create<Store>((set, get) => ({
     set({ config: c })
     get().persist()
   },
-  addManualCommand: (pid, label, cwd, command) => {
+  addManualCommand: (pid, label, cwd, command, origin) => {
     const c = structuredClone(get().config)
     c.projects
       .find((p) => p.id === pid)
-      ?.manualCommands.push({ id: uuid(), label, cwd, command, long: true })
+      ?.manualCommands.push({ id: uuid(), label, cwd, command, long: true, ...(origin ? { origin } : {}) })
     set({ config: c })
     get().persist()
   },

@@ -7,6 +7,7 @@ export interface CommandEntry {
   command: string
   long?: boolean
   confirmBeforeRun?: boolean
+  origin?: 'ai'
 }
 export interface Project {
   id: string
