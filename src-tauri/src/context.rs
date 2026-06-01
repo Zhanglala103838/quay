@@ -4,20 +4,40 @@ use std::path::{Path, PathBuf};
 
 const MAX_DEPTH: usize = 3;
 const MAX_TREE: usize = 400;
-const MAX_FILES: usize = 30;
+const MAX_FILES: usize = 40;
 const MAX_FILE_BYTES: usize = 8 * 1024;
-const MAX_TOTAL_BYTES: usize = 64 * 1024;
+const MAX_TOTAL_BYTES: usize = 96 * 1024;
 
 const SKIP_DIRS: &[&str] = &[
     "node_modules", "vendor", "target", ".git", "dist", "build", ".next", ".venv",
     "__pycache__", ".idea", ".vscode", "coverage",
 ];
 
+/// 精确文件名白名单：跨生态的"构建/运行/依赖"清单与配置文件。只读这些 + WHITELIST_SUFFIX。
 const WHITELIST: &[&str] = &[
-    "package.json", "composer.json", "pom.xml", "build.gradle", "build.gradle.kts",
-    "go.mod", "Cargo.toml", "Makefile", "docker-compose.yml", "docker-compose.yaml",
-    "compose.yml", "manage.py", "pyproject.toml", "requirements.txt", "artisan",
+    // JS / TS
+    "package.json", "pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json", "rush.json",
+    // Python
+    "manage.py", "pyproject.toml", "requirements.txt", "Pipfile", "setup.py", "setup.cfg", "tox.ini",
+    // Ruby
+    "Gemfile", "Rakefile", "config.ru",
+    // PHP
+    "composer.json", "artisan",
+    // Rust / Go
+    "Cargo.toml", "go.mod",
+    // JVM (Maven / Gradle，含多模块聚合器 settings.gradle)
+    "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+    // 通用任务运行器 / 进程声明 / 容器
+    "Makefile", "Taskfile.yml", "Taskfile.yaml", "Justfile", "justfile",
+    "Procfile", "Procfile.dev", "Dockerfile",
+    "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml",
+    // 文档
     "README", "README.md", "README.txt",
+];
+
+/// 后缀白名单：按扩展名匹配的清单文件(精确名列不全的，如 .NET 项目/解决方案)。小写比较。
+const WHITELIST_SUFFIX: &[&str] = &[
+    ".csproj", ".sln", ".fsproj", ".vbproj",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,7 +117,10 @@ fn walk(root: &Path, dir: &Path, depth: usize, ctx: &mut ProjectContext, total: 
             if is_sensitive(&name) {
                 continue;
             }
-            if !WHITELIST.contains(&name.as_str()) {
+            let name_lower = name.to_lowercase();
+            let is_marker = WHITELIST.contains(&name.as_str())
+                || WHITELIST_SUFFIX.iter().any(|s| name_lower.ends_with(s));
+            if !is_marker {
                 continue;
             }
             if ctx.tree.len() < MAX_TREE {
@@ -220,5 +243,62 @@ mod tests {
         assert!(readme.content.len() <= MAX_FILE_BYTES);
         // 内容仍是合法 UTF-8(能成功构成 String 即合法,这里再断言非空)
         assert!(!readme.content.is_empty());
+    }
+
+    #[test]
+    fn collects_ruby_ecosystem() {
+        let d = tmp("ruby");
+        fs::write(d.join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+        fs::write(d.join("Rakefile"), "task :default").unwrap();
+        fs::write(d.join("config.ru"), "run App").unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        for f in ["Gemfile", "Rakefile", "config.ru"] {
+            assert!(ctx.files.iter().any(|x| x.rel_path == f), "missing {f}");
+        }
+    }
+
+    #[test]
+    fn collects_dotnet_by_suffix() {
+        let d = tmp("dotnet");
+        fs::write(d.join("Api.csproj"), "<Project/>").unwrap();
+        fs::write(d.join("Solution.sln"), "Microsoft Visual Studio Solution").unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        assert!(ctx.files.iter().any(|x| x.rel_path == "Api.csproj"));
+        assert!(ctx.files.iter().any(|x| x.rel_path == "Solution.sln"));
+    }
+
+    #[test]
+    fn collects_monorepo_and_procfile() {
+        let d = tmp("monorepo");
+        fs::write(d.join("pnpm-workspace.yaml"), "packages:\n  - 'apps/*'").unwrap();
+        fs::write(d.join("Procfile"), "web: node server.js").unwrap();
+        fs::create_dir_all(d.join("apps/web")).unwrap();
+        fs::write(d.join("apps/web/package.json"), r#"{"name":"web"}"#).unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        assert!(ctx.files.iter().any(|x| x.rel_path == "pnpm-workspace.yaml"));
+        assert!(ctx.files.iter().any(|x| x.rel_path == "Procfile"));
+        assert!(ctx.files.iter().any(|x| x.rel_path == "apps/web/package.json"));
+    }
+
+    #[test]
+    fn collects_gradle_multimodule_settings() {
+        let d = tmp("gradle_mm");
+        fs::write(d.join("settings.gradle"), "include 'svc-a','svc-b'").unwrap();
+        fs::write(d.join("build.gradle"), "plugins {}").unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        assert!(ctx.files.iter().any(|x| x.rel_path == "settings.gradle"));
+    }
+
+    #[test]
+    fn sensitive_still_blocked_after_widening() {
+        // 拓宽白名单后,敏感文件仍必须被硬拦截
+        let d = tmp("sens_after_widen");
+        fs::write(d.join("Gemfile"), "gem 'rails'").unwrap();
+        fs::write(d.join(".env"), "SECRET=x").unwrap();
+        fs::write(d.join("server.key"), "-----KEY-----").unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        assert!(ctx.files.iter().any(|x| x.rel_path == "Gemfile"));
+        assert!(!ctx.files.iter().any(|x| x.rel_path.contains(".env")));
+        assert!(!ctx.files.iter().any(|x| x.rel_path.ends_with(".key")));
     }
 }
