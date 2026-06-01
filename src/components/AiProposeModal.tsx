@@ -81,7 +81,10 @@ export function AiProposeModal({
               ) : (
                 <div className="ai-row-cmd">
                   <code>{r.command}</code>
-                  <span className="ai-row-cwd">{r.cwd || '（根目录）'}</span>
+                  <span className="ai-row-cwd">
+                    <span className="ai-cwd-icon" aria-hidden="true">📁</span>
+                    运行于 {r.cwd || '项目根目录'}
+                  </span>
                 </div>
               )}
               {r.why && <div className="ai-row-why">为什么：{r.why}</div>}

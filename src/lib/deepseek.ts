@@ -191,7 +191,8 @@ function proposeCacheKey(ctx: ProjectContext): string {
   const { model } = useSettings.getState().deepseek
   const sig = ctx.root + ' ' + ctx.tree.join('|') + ' ' +
     ctx.files.map((f) => `${f.relPath}:${f.content.length}`).join('|')
-  return `quay.aipropose.v1.${model}.${digest(sig)}`
+  // v2：prompt 升级(优先常驻启动命令 + 多模块分服务)，作废 v1 旧缓存。
+  return `quay.aipropose.v2.${model}.${digest(sig)}`
 }
 
 /// 喂项目上下文给 DeepSeek,提议可运行命令。带 localStorage 缓存(context 不变不重复调)。
@@ -205,12 +206,15 @@ export async function proposeCommands(ctx: ProjectContext): Promise<Proposal[]> 
     /* ignore */
   }
   const sys =
-    '你是项目运行专家。根据给定的项目目录结构和关键文件内容,提议可以直接运行的开发/构建/启动命令。' +
-    '只提议你有明确证据支撑的命令,宁缺毋滥,不要猜测。' +
+    '你是项目运行专家,服务的工具是一个「开发进程控制塔」——它会拉起命令并常驻盯着内存/端口/状态。' +
+    '所以请优先提议能把项目「跑起来、常驻」的启动/开发命令(如 dev server、`mvn spring-boot:run`、`php think worker`、`go run .`、跑可执行 jar),' +
+    '这类对该工具最有价值;构建/测试类命令(如 `mvn clean install`、`npm run build`)价值较低,可作为补充但不要作为唯一一条。' +
+    '若是多模块/monorepo,请为每个「可独立跑起来的子服务」分别给出其启动命令(用各自的 cwd),而不是只给一条根目录的聚合构建。' +
+    '尽量给出多条候选(启动 + 构建 + 测试),让用户挑;但只提议你有明确证据支撑的命令,宁缺毋滥,不要猜测不存在的脚本。' +
     '每条给:name(中文短标签,如「后端 API」),command(完整可执行命令串,如 `mvn spring-boot:run`),' +
     'cwd(命令该在哪个子目录运行,用相对项目根的路径;就在根目录则空字符串),' +
     'why(为什么是这条,引用你看到的文件证据,一句话)。' +
-    '只输出 JSON,形如 {"commands":[{"name":"后端 API","command":"mvn spring-boot:run","cwd":"gyj_admin/ch_backend","why":"该目录有 Spring Boot pom.xml"}]}。'
+    '只输出 JSON,形如 {"commands":[{"name":"后端 API","command":"mvn spring-boot:run","cwd":"gyj_admin/ch_backend","why":"该目录有 Spring Boot pom.xml,spring-boot-maven-plugin 可直接启动服务"}]}。'
   const filesText = ctx.files
     .map((f) => `### ${f.relPath}${f.truncated ? '（已截断）' : ''}\n${f.content}`)
     .join('\n\n')

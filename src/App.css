@@ -2477,9 +2477,11 @@ html.resizing .runtabs {
 .ai-row-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .ai-row-name { font-weight: 600; font-size: 13px; }
 .ai-edit-btn { margin-left: auto; background: none; border: none; color: var(--muted, #8a8a8a); cursor: pointer; font-size: 12px; }
-.ai-row-cmd { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+/* 命令与 cwd 纵向堆叠,避免 cwd 被读成命令参数(如 mvn clean install gyj_admin/...) */
+.ai-row-cmd { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
 .ai-row-cmd code { font-family: 'JetBrains Mono Variable', monospace; font-size: 12px; }
-.ai-row-cwd { color: var(--muted, #8a8a8a); font-size: 11px; }
+.ai-row-cwd { display: inline-flex; align-items: center; gap: 4px; color: var(--muted, #8a8a8a); font-size: 11px; }
+.ai-cwd-icon { font-size: 10px; opacity: 0.8; }
 .ai-row-why { margin-top: 4px; color: var(--muted, #8a8a8a); font-size: 11px; line-height: 1.4; }
 .ai-edit-fields { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
