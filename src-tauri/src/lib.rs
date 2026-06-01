@@ -1,6 +1,6 @@
 mod commands;
-mod context;
 mod config;
+mod context;
 mod git;
 mod identity;
 mod ledger;

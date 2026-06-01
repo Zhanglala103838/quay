@@ -109,7 +109,12 @@ fn walk(root: &Path, dir: &Path, depth: usize, ctx: &mut ProjectContext, total: 
                 if let Ok(raw) = std::fs::read_to_string(&path) {
                     let truncated = raw.len() > MAX_FILE_BYTES;
                     let content: String = if truncated {
-                        raw.chars().take(MAX_FILE_BYTES).collect()
+                        // 按字节截断,回退到最近的字符边界(避免切断多字节 UTF-8)
+                        let mut end = MAX_FILE_BYTES;
+                        while end > 0 && !raw.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        raw[..end].to_string()
                     } else {
                         raw
                     };
@@ -200,5 +205,20 @@ mod tests {
         let readme = ctx.files.iter().find(|f| f.rel_path == "README.md").unwrap();
         assert!(readme.truncated);
         assert!(readme.content.len() <= MAX_FILE_BYTES);
+    }
+
+    #[test]
+    fn truncates_large_cjk_file_by_bytes() {
+        let d = tmp("trunc_cjk");
+        // 每个中文字 3 字节, 1 万字 = 3 万字节 > 8KB
+        let big = "中".repeat(10_000);
+        fs::write(d.join("README.md"), &big).unwrap();
+        let ctx = collect_context(d.to_str().unwrap());
+        let readme = ctx.files.iter().find(|f| f.rel_path == "README.md").unwrap();
+        assert!(readme.truncated);
+        // 不变式:截断后字节数不超上限(字符边界回退保证不切坏 UTF-8)
+        assert!(readme.content.len() <= MAX_FILE_BYTES);
+        // 内容仍是合法 UTF-8(能成功构成 String 即合法,这里再断言非空)
+        assert!(!readme.content.is_empty());
     }
 }
