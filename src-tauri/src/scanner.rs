@@ -8,7 +8,7 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     if !p.is_dir() {
         return ScanResult { commands: vec![], dir_exists: false, detected_sources: vec![] };
     }
-    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm];
+    let detectors: &[fn(&Path) -> Vec<Command>] = &[detect_npm, detect_cargo, detect_go];
     let mut commands: Vec<Command> = Vec::new();
     for d in detectors {
         commands.extend(d(p));
@@ -80,6 +80,43 @@ fn detect_npm(dir: &Path) -> Vec<Command> {
     out
 }
 
+/// 固定约定命令的小工具：批量造 Command。
+fn fixed(source: &str, items: &[(&str, &str)]) -> Vec<Command> {
+    items
+        .iter()
+        .map(|(cmd, cat)| Command {
+            name: cmd.to_string(),
+            command: cmd.to_string(),
+            source: source.to_string(),
+            category: cat.to_string(),
+        })
+        .collect()
+}
+
+fn detect_cargo(dir: &Path) -> Vec<Command> {
+    if !dir.join("Cargo.toml").is_file() {
+        return vec![];
+    }
+    fixed("cargo", &[
+        ("cargo run", "dev"),
+        ("cargo build", "build"),
+        ("cargo test", "test"),
+        ("cargo check", "test"),
+        ("cargo clippy", "test"),
+    ])
+}
+
+fn detect_go(dir: &Path) -> Vec<Command> {
+    if !dir.join("go.mod").is_file() {
+        return vec![];
+    }
+    fixed("go", &[
+        ("go run .", "dev"),
+        ("go build ./...", "build"),
+        ("go test ./...", "test"),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,5 +178,26 @@ mod tests {
     fn nonexistent_dir_flags_missing() {
         let r = scan_directory("/no/such/quay/dir/xyz");
         assert!(!r.dir_exists && r.commands.is_empty() && r.detected_sources.is_empty());
+    }
+
+    #[test]
+    fn cargo_project_offers_run_build_test() {
+        let d = tmp("cargo");
+        fs::write(d.join("Cargo.toml"), "[package]\nname=\"x\"").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"cargo run") && cmds.contains(&"cargo test"));
+        let run = r.commands.iter().find(|c| c.command == "cargo run").unwrap();
+        assert_eq!(run.category, "dev");
+        assert_eq!(run.source, "cargo");
+    }
+
+    #[test]
+    fn go_project_offers_run_build_test() {
+        let d = tmp("go");
+        fs::write(d.join("go.mod"), "module x\n").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        let cmds: Vec<&str> = r.commands.iter().map(|c| c.command.as_str()).collect();
+        assert!(cmds.contains(&"go run .") && cmds.contains(&"go test ./..."));
     }
 }
