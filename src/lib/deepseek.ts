@@ -1,4 +1,4 @@
-import type { Script } from './types'
+import type { Command } from './types'
 import { categorize, sortByCanon, CATEGORY_ORDER, type Category } from './grouping'
 import { useSettings } from '../state/settings'
 
@@ -64,9 +64,11 @@ export async function testConnection(): Promise<{ ok: boolean; message: string }
 }
 
 // ── 智能分组 ──────────────────────────────────────────────
-function groupCacheKey(scripts: Script[]) {
+function groupCacheKey(commands: Command[]) {
   const { model } = useSettings.getState().deepseek
-  return `quay.aigroup.${model}.${scripts.map((s) => s.name).sort().join('|')}`
+  // v2：leaf 结构升级（Command 模型带 source + 完整执行串 `pnpm run dev`）。
+  // 旧版本(v1)缓存的 leaf 无 source、command 是原始脚本体(如 `vite`)会跑错命令,故 bump 版本作废旧缓存。
+  return `quay.aigroup.v2.${model}.${commands.map((s) => s.name).sort().join('|')}`
 }
 
 function stripFences(s: string) {
@@ -74,9 +76,9 @@ function stripFences(s: string) {
 }
 
 /// LLM 智能分组 → Category[]。带缓存；失败/未配置回退启发式 categorize()。
-export async function smartGroup(scripts: Script[]): Promise<Category[]> {
-  if (scripts.length === 0) return []
-  const cacheKey = groupCacheKey(scripts)
+export async function smartGroup(commands: Command[]): Promise<Category[]> {
+  if (commands.length === 0) return []
+  const cacheKey = groupCacheKey(commands)
   try {
     const cached = localStorage.getItem(cacheKey)
     if (cached) return sortByCanon(JSON.parse(cached) as Category[]) // 旧缓存也按规范顺序纠正
@@ -84,9 +86,9 @@ export async function smartGroup(scripts: Script[]): Promise<Category[]> {
     /* ignore */
   }
 
-  const names = scripts.map((s) => s.name)
+  const names = commands.map((s) => s.name)
   const sys =
-    '你是构建脚本组织专家。把 npm scripts 按用途分到中文大类。' +
+    '你是构建脚本组织专家。把开发/构建命令按用途分到中文大类。' +
     `大类标签只能从这个固定集合里选:${CATEGORY_ORDER.join('/')};不要新造其它标签。` +
     '每个大类内把语义相关、通常是相同前缀(冒号前同名,如 db:* / deploy:*)且≥2个的脚本收成子组(groups)，' +
     '其余单独脚本放 loose。每个脚本必须且只能出现一次,只能用我给的脚本名,不要新造。' +
@@ -101,11 +103,12 @@ export async function smartGroup(scripts: Script[]): Promise<Category[]> {
   const parsed = JSON.parse(stripFences(raw)) as {
     categories?: { label?: string; groups?: { prefix?: string; items?: string[] }[]; loose?: string[] }[]
   }
-  const cmdOf = new Map(scripts.map((s) => [s.name, s.command]))
+  const cmdOf = new Map(commands.map((c) => [c.name, c]))
   const used = new Set<string>()
   const leaf = (n: string) => {
     used.add(n)
-    return { name: n, command: cmdOf.get(n) ?? '' }
+    const c = cmdOf.get(n)
+    return { name: n, command: c?.command ?? '', source: c?.source ?? '' }
   }
 
   const categories: Category[] = (parsed.categories ?? [])
@@ -121,15 +124,15 @@ export async function smartGroup(scripts: Script[]): Promise<Category[]> {
     })
     .filter((c) => c.groups.length > 0 || c.loose.length > 0)
 
-  // LLM 漏掉的脚本兜底进「其他」
-  const leftover = scripts.filter((s) => !used.has(s.name)).map((s) => leaf(s.name))
+  // LLM 漏掉的命令兜底进「其他」
+  const leftover = commands.filter((c) => !used.has(c.name)).map((c) => leaf(c.name))
   if (leftover.length) {
     const other = categories.find((c) => c.label === '其他')
     if (other) other.loose.push(...leftover)
     else categories.push({ key: 'ai-other', label: '其他', groups: [], loose: leftover })
   }
 
-  const result = categories.length ? sortByCanon(categories) : categorize(scripts)
+  const result = categories.length ? sortByCanon(categories) : categorize(commands)
   try {
     localStorage.setItem(cacheKey, JSON.stringify(result))
   } catch {

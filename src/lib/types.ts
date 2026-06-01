@@ -1,4 +1,4 @@
-export interface Script { name: string; command: string }
+export interface Command { name: string; command: string; source: string; category: string }
 export interface Directory { id: string; path: string }
 export interface CommandEntry {
   id: string
@@ -15,7 +15,7 @@ export interface Project {
   manualCommands: CommandEntry[]
 }
 export interface Config { projects: Project[] }
-export interface ScanResult { scripts: Script[]; dirExists: boolean; hasPackageJson: boolean }
+export interface ScanResult { commands: Command[]; dirExists: boolean; detectedSources: string[] }
 export interface Orphan {
   runId: string
   pid: number

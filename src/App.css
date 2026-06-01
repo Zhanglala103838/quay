@@ -549,6 +549,21 @@ html.resizing .runtabs {
 .dir-name {
   font-weight: 500;
 }
+/* 目录头的工具链 chip(pnpm/cargo/go…):项目身份标识,一眼看出"这是什么项目"。
+   比命令级 .cmd-source 更显眼(青色描边),因为它承担识别职责而非次要标注。 */
+.dir-source {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent, #5ec8e0);
+  background: rgba(94, 200, 224, 0.1);
+  border: 1px solid rgba(94, 200, 224, 0.3);
+  border-radius: 99px;
+  padding: 0 7px;
+  line-height: 15px;
+  text-transform: lowercase;
+}
 .dir-count {
   font-size: 10px;
   color: var(--text-dim);
@@ -750,6 +765,21 @@ html.resizing .runtabs {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 命令来源工具链小标(npm/pnpm/cargo/go/make/compose/composer/maven/gradle/python)。
+   .cmd-name 是 flex:1,会把它顶到右侧;低调灰药丸,不与绿色"运行中"标抢视线。 */
+.cmd-source {
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  background: rgba(150, 160, 180, 0.12);
+  border: 1px solid rgba(150, 160, 180, 0.2);
+  border-radius: 99px;
+  padding: 0 6px;
+  line-height: 14px;
+  text-transform: lowercase;
 }
 
 /* HeroUI Tooltip.Trigger 默认 inline-block,会按内容宽度撑开而绕过 .cmd 的收缩约束;
