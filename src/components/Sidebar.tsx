@@ -3,7 +3,7 @@ import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
 import { scanDir, watchDir, unwatchDir } from '../lib/ipc'
 import { listen } from '@tauri-apps/api/event'
-import type { Script, ScanResult, CommandEntry } from '../lib/types'
+import type { Command, ScanResult, CommandEntry } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { smartGroup, explainCommand } from '../lib/deepseek'
@@ -249,6 +249,7 @@ export function Sidebar({
 function CmdRow({
   display,
   command,
+  source,
   running,
   onRun,
   onView,
@@ -257,6 +258,7 @@ function CmdRow({
 }: {
   display: string
   command: string
+  source?: string
   running: boolean
   onRun: () => void
   onView?: () => void
@@ -329,6 +331,7 @@ function CmdRow({
       >
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
         <span className="cmd-name">{display}</span>
+        {source && <span className="cmd-source">{source}</span>}
         {running && <span className="cmd-running-tag">运行中</span>}
         {configured && (
           <button className="explain-btn" aria-label="AI 解释这条命令" onClick={toggleExplain}>
@@ -401,8 +404,9 @@ function PrefixGroupNode({
               key={it.name}
               display={it.name === group.prefix ? it.name : it.name.slice(group.prefix.length + 1)}
               command={it.command}
+              source={it.source}
               running={runningLabels.has(`${dirName}:${it.name}`)}
-              onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+              onRun={() => onRun(`${dirName}:${it.name}`, path, it.command)}
               onView={() => onView(`${dirName}:${it.name}`)}
             />
           ))}
@@ -429,7 +433,7 @@ function DirNode({
   runningLabels: Set<string>
   onRemove?: () => void
 }) {
-  const [scripts, setScripts] = useState<Script[]>([])
+  const [commands, setCommands] = useState<Command[]>([])
   const [warn, setWarn] = useState('')
   const [open, setOpen] = useState(false) // 目录默认收起
   const configured = useSettings((s) => s.configured)
@@ -452,13 +456,13 @@ function DirNode({
 
     const applyScan = (r: ScanResult) => {
       if (!active) return
-      setScripts(r.scripts)
+      setCommands(r.commands)
       if (!r.dirExists) {
         setWarn('目录不存在或无访问权限(检查 macOS 系统设置 → 隐私与安全性 → 文件和文件夹 / 完整磁盘访问)')
-      } else if (!r.hasPackageJson) {
-        setWarn('此目录无 package.json')
-      } else if (r.scripts.length === 0) {
-        setWarn('package.json 无 scripts')
+      } else if (r.detectedSources.length === 0) {
+        setWarn('此目录无可识别的项目（package.json / Cargo.toml / Makefile / go.mod / pom.xml 等）')
+      } else if (r.commands.length === 0) {
+        setWarn('检测到项目但无可运行命令')
       } else {
         setWarn('')
       }
@@ -486,10 +490,10 @@ function DirNode({
 
   // AI 智能分组：开启后拉取并缓存；失败回退启发式
   useEffect(() => {
-    if (!aiMode || scripts.length === 0) return
+    if (!aiMode || commands.length === 0) return
     let cancelled = false
     setAiState('loading')
-    smartGroup(scripts)
+    smartGroup(commands)
       .then((cats) => {
         if (cancelled) return
         setAiCats(cats)
@@ -503,11 +507,11 @@ function DirNode({
     return () => {
       cancelled = true
     }
-  }, [aiMode, scripts])
+  }, [aiMode, commands])
 
   const dirName = path.split('/').filter(Boolean).pop() || path
-  const categories = aiMode && aiCats ? aiCats : categorize(scripts)
-  const dirRunning = scripts.filter((s) => runningLabels.has(`${dirName}:${s.name}`)).length
+  const categories = aiMode && aiCats ? aiCats : categorize(commands)
+  const dirRunning = commands.filter((s) => runningLabels.has(`${dirName}:${s.name}`)).length
 
   return (
     <div className="dir">
@@ -516,7 +520,7 @@ function DirNode({
         <span className="chevron">{open ? '▾' : '▸'}</span>
         <span className="dir-icon">📁</span>
         <span className="dir-name">{dirName}</span>
-        {scripts.length > 0 && <span className="dir-count">{scripts.length}</span>}
+        {commands.length > 0 && <span className="dir-count">{commands.length}</span>}
         {dirRunning > 0 && <span className="activity-dot" />}
         {/* 右侧操作区:开终端 / VSCode / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
         <span className="dir-actions" onClick={(e) => e.stopPropagation()}>
@@ -547,7 +551,7 @@ function DirNode({
 
       {open && (
         <div className="dir-body">
-          {configured && scripts.length > 0 && (
+          {configured && commands.length > 0 && (
             <div className="dir-toolbar">
               <button
                 className={'ai-btn' + (aiMode ? ' active' : '')}
@@ -587,8 +591,9 @@ function DirNode({
                   key={it.name}
                   display={it.name}
                   command={it.command}
+                  source={it.source}
                   running={runningLabels.has(`${dirName}:${it.name}`)}
-                  onRun={() => onRun(`${dirName}:${it.name}`, path, `npm run ${it.name}`)}
+                  onRun={() => onRun(`${dirName}:${it.name}`, path, it.command)}
                   onView={() => onView(`${dirName}:${it.name}`)}
                 />
               ))}
