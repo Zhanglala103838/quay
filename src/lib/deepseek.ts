@@ -1,4 +1,4 @@
-import type { Command } from './types'
+import type { Command, ProjectContext, Proposal } from './types'
 import { categorize, sortByCanon, CATEGORY_ORDER, type Category } from './grouping'
 import { useSettings } from '../state/settings'
 
@@ -75,6 +75,43 @@ function stripFences(s: string) {
   return s.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 }
 
+/// 解析 LLM 提议为 Proposal[]。纯函数,便于单测。
+/// 校验:name/command 非空; cwd 必须为空/.(归一为根)或 tree 里存在的目录; 去重。
+export function parseProposals(raw: string, ctx: ProjectContext): Proposal[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(raw))
+  } catch {
+    return []
+  }
+  const obj = parsed as { commands?: unknown }
+  const list: unknown[] = Array.isArray(obj?.commands)
+    ? obj.commands
+    : Array.isArray(parsed)
+      ? (parsed as unknown[])
+      : []
+  const dirs = new Set(
+    ctx.tree.filter((t) => t.endsWith('/')).map((t) => t.replace(/\/$/, '')),
+  )
+  const seen = new Set<string>()
+  const out: Proposal[] = []
+  for (const item of list) {
+    const p = item as Record<string, unknown>
+    const name = String(p?.name ?? '').trim()
+    const command = String(p?.command ?? '').trim()
+    let cwd = String(p?.cwd ?? '').trim()
+    const why = String(p?.why ?? '').trim()
+    if (cwd === '.') cwd = ''
+    if (!name || !command) continue
+    if (cwd !== '' && !dirs.has(cwd)) continue
+    const key = `${name}|${command}|${cwd}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ name, command, cwd, why })
+  }
+  return out
+}
+
 /// LLM 智能分组 → Category[]。带缓存；失败/未配置回退启发式 categorize()。
 export async function smartGroup(commands: Command[]): Promise<Category[]> {
   if (commands.length === 0) return []
@@ -139,6 +176,62 @@ export async function smartGroup(commands: Command[]): Promise<Category[]> {
     /* ignore */
   }
   return result
+}
+
+// ── AI 提议命令 ────────────────────────────────────────────
+/// djb2 字符串哈希(无需加密强度,仅作缓存键)。
+function digest(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
+function proposeCacheKey(ctx: ProjectContext): string {
+  const { model } = useSettings.getState().deepseek
+  const sig = ctx.root + ' ' + ctx.tree.join('|') + ' ' +
+    ctx.files.map((f) => `${f.relPath}:${f.content.length}`).join('|')
+  return `quay.aipropose.v1.${model}.${digest(sig)}`
+}
+
+/// 喂项目上下文给 DeepSeek,提议可运行命令。带 localStorage 缓存(context 不变不重复调)。
+/// 未配置 key / 调用失败 → 抛错(UI 处理),不影响 L1。
+export async function proposeCommands(ctx: ProjectContext): Promise<Proposal[]> {
+  const cacheKey = proposeCacheKey(ctx)
+  try {
+    const cached = localStorage.getItem(cacheKey)
+    if (cached) return JSON.parse(cached) as Proposal[]
+  } catch {
+    /* ignore */
+  }
+  const sys =
+    '你是项目运行专家。根据给定的项目目录结构和关键文件内容,提议可以直接运行的开发/构建/启动命令。' +
+    '只提议你有明确证据支撑的命令,宁缺毋滥,不要猜测。' +
+    '每条给:name(中文短标签,如「后端 API」),command(完整可执行命令串,如 `mvn spring-boot:run`),' +
+    'cwd(命令该在哪个子目录运行,用相对项目根的路径;就在根目录则空字符串),' +
+    'why(为什么是这条,引用你看到的文件证据,一句话)。' +
+    '只输出 JSON,形如 {"commands":[{"name":"后端 API","command":"mvn spring-boot:run","cwd":"gyj_admin/ch_backend","why":"该目录有 Spring Boot pom.xml"}]}。'
+  const filesText = ctx.files
+    .map((f) => `### ${f.relPath}${f.truncated ? '（已截断）' : ''}\n${f.content}`)
+    .join('\n\n')
+  const user =
+    `项目根：${ctx.root}\n` +
+    (ctx.detectedSources.length ? `L1 已探测工具链：${ctx.detectedSources.join(', ')}\n` : '') +
+    `\n目录结构（相对根,目录以 / 结尾）：\n${ctx.tree.join('\n')}\n\n关键文件内容：\n${filesText}`
+
+  const raw = await chat(
+    [
+      { role: 'system', content: sys },
+      { role: 'user', content: user },
+    ],
+    { json: true },
+  )
+  const proposals = parseProposals(raw, ctx)
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(proposals))
+  } catch {
+    /* ignore */
+  }
+  return proposals
 }
 
 // ── 命令解释 ──────────────────────────────────────────────
