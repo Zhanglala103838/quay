@@ -500,6 +500,11 @@ function DirNode({
     let active = true
     let unlisten: (() => void) | undefined
 
+    // path 变了(用户改目录绑定):清掉上一个目录残留的 AI 提议状态,避免跨目录串扰。
+    setProposals(null)
+    setProposeErr('')
+    setProposing(false)
+
     const applyScan = (r: ScanResult) => {
       if (!active) return
       setCommands(r.commands)

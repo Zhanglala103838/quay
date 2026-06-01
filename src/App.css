@@ -1753,6 +1753,15 @@ html.resizing .runtabs {
   opacity: 0.5;
   cursor: default;
 }
+/* L1 空手时,引导用户用 AI 识别——按钮更醒目 */
+.ai-btn.suggest {
+  border-color: rgba(124, 92, 255, 0.55);
+  color: #b6a6ff;
+  background: rgba(124, 92, 255, 0.12);
+}
+.ai-btn.suggest:hover {
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.35);
+}
 
 /* 命令解释按钮 + 气泡 */
 .explain-btn,
