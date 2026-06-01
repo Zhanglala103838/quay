@@ -1,4 +1,5 @@
 mod commands;
+mod context;
 mod config;
 mod git;
 mod identity;
@@ -219,6 +220,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan_dir,
+            commands::collect_context,
             commands::watch_dir,
             commands::unwatch_dir,
             commands::get_config,

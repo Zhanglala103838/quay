@@ -1,12 +1,18 @@
 use crate::runner::{Registry, RunEvent};
 use crate::types::*;
-use crate::{config, reconcile, runner, scanner, watcher};
+use crate::{config, context, reconcile, runner, scanner, watcher};
 use tauri::ipc::Channel;
 use tauri::State;
 
 #[tauri::command]
 pub fn scan_dir(path: String) -> ScanResult {
     scanner::scan_directory(&path)
+}
+
+/// L2：采集项目上下文(浅递归 + 白名单文件)，喂给前端 AI 提议命令。
+#[tauri::command]
+pub fn collect_context(path: String) -> context::ProjectContext {
+    context::collect_context(&path)
 }
 
 /// 开始监听该目录 package.json,变更时后端 emit `pkg-changed`(前端按 path 匹配重扫)。
