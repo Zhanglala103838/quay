@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Script {
+pub struct Command {
     pub name: String,
     pub command: String,
+    pub source: String,
+    #[serde(default)]
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,9 +45,9 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
-    pub scripts: Vec<Script>,
+    pub commands: Vec<Command>,
     #[serde(rename = "dirExists")]
     pub dir_exists: bool,
-    #[serde(rename = "hasPackageJson")]
-    pub has_package_json: bool,
+    #[serde(rename = "detectedSources")]
+    pub detected_sources: Vec<String>,
 }
