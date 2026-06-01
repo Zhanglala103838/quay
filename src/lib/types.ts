@@ -94,3 +94,12 @@ export interface GitDetail {
   branches: GitBranch[]
   viewing: string
 }
+
+export interface ContextFile { relPath: string; content: string; truncated: boolean }
+export interface ProjectContext {
+  root: string
+  tree: string[]
+  files: ContextFile[]
+  detectedSources: string[]
+}
+export interface Proposal { name: string; command: string; cwd: string; why: string }

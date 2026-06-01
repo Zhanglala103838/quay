@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport, GitBrief, GitDetail } from './types'
+import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport, GitBrief, GitDetail, ProjectContext } from './types'
 
 /// 拉起原生目录选择器,返回选中的绝对路径;取消返回 null。
 export async function pickDirectory(): Promise<string | null> {
@@ -9,6 +9,8 @@ export async function pickDirectory(): Promise<string | null> {
 }
 
 export const scanDir = (path: string) => invoke<ScanResult>('scan_dir', { path })
+/// L2：采集项目上下文(浅递归 + 白名单关键文件)，供前端喂给 DeepSeek 提议命令。
+export const collectContext = (path: string) => invoke<ProjectContext>('collect_context', { path })
 /// 开始监听该目录 package.json,变更时后端 emit `pkg-changed`(payload { path })。与 unwatchDir 配对。
 export const watchDir = (path: string) => invoke<void>('watch_dir', { path })
 export const unwatchDir = (path: string) => invoke<void>('unwatch_dir', { path })
