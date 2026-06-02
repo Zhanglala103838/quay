@@ -561,6 +561,10 @@ function DirNode({
     setProposals(null)
   }
 
+  // 提议是否已存在于本目录命令(同 命令+绝对 cwd)——弹窗据此标「已添加」并默认不勾。
+  const proposalExists = (p: Proposal) =>
+    manualCommands.some((m) => m.command === p.command && m.cwd === joinCwd(p.cwd))
+
   useEffect(() => {
     let active = true
     let unlisten: (() => void) | undefined
@@ -774,6 +778,7 @@ function DirNode({
       {proposals !== null && (
         <AiProposeModal
           proposals={proposals}
+          isExisting={proposalExists}
           onConfirm={landProposals}
           onCancel={() => setProposals(null)}
         />

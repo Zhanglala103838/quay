@@ -2487,6 +2487,8 @@ html.resizing .runtabs {
 .ai-row-why { margin-top: 4px; color: var(--muted, #8a8a8a); font-size: 11px; line-height: 1.4; }
 .ai-edit-fields { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .ai-edit { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 8px; color: inherit; font-size: 12px; }
+.ai-exist-note { color: var(--muted, #8a8a8a); font-size: 11.5px; margin: 2px 0 6px; }
+.ai-row-exist { flex-shrink: 0; font-size: 10px; color: #8a8a8a; border: 1px solid rgba(255,255,255,0.18); border-radius: 99px; padding: 0 7px; line-height: 16px; }
 /* AI 来源徽标:命令名前置,flex-shrink:0 不被挤压,不混入右侧操作区 */
 .cmd-ai-tag { font-size: 10px; flex-shrink: 0; opacity: 0.85; margin-right: -3px; }
 
