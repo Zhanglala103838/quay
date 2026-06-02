@@ -1346,6 +1346,18 @@ html.resizing .runtabs {
   color: rgba(52, 232, 164, 0.72);
   font-variant-numeric: tabular-nums;
 }
+/* 监听端口:青色小药丸,与绿色内存拉开色相 —— 一眼可见命令开在哪个口 */
+.chip-port {
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: #6fd3ff;
+  background: rgba(80, 190, 255, 0.13);
+  border: 1px solid rgba(80, 190, 255, 0.28);
+}
 /* app 主进程占用:跟在「全局」后的弱化参考值 */
 .running-appmem {
   font-family: var(--font-mono, monospace);
@@ -2512,3 +2524,122 @@ html.resizing .runtabs {
 .ai-ctx-toggle { background: none; border: none; color: var(--muted, #8a8a8a); cursor: pointer; font-size: 11px; white-space: nowrap; }
 .ai-ctx-content { margin: 6px 0 0; max-height: 200px; overflow: auto; background: rgba(0,0,0,0.28); border-radius: 6px; padding: 8px; font-family: 'JetBrains Mono Variable', monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .ai-ctx-foot { color: var(--muted, #8a8a8a); font-size: 11px; margin: 10px 0 0; }
+
+/* ===== 聚合命令组 ===== */
+/* 组区与手动区同级缩进,带左引导线 */
+.group-cat {
+  margin: 2px 0 4px 8px;
+  padding-left: 6px;
+  border-left: 1px solid var(--glass-border);
+}
+.group-row-wrap { margin: 1px 0; }
+/* .group-row 复用 .cmd 的高亮/hover;这里只补组特有元素 */
+.group-caret {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 1px;
+  line-height: 1;
+}
+.group-caret:hover { color: var(--text); }
+.group-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+  filter: drop-shadow(0 0 5px rgba(255, 196, 64, 0.55));
+}
+.group-row.running .group-icon { filter: drop-shadow(0 0 6px rgba(52, 232, 164, 0.8)); }
+.group-count {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  background: rgba(255, 196, 64, 0.12);
+  border: 1px solid rgba(255, 196, 64, 0.28);
+  border-radius: 99px;
+  padding: 0 7px;
+  line-height: 15px;
+}
+.group-members {
+  margin: 1px 0 4px 20px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.group-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.group-member.running { color: var(--green); }
+.group-member-dot { flex-shrink: 0; font-size: 8px; }
+.group-member-name { flex-shrink: 0; font-weight: 500; }
+.group-member-cmd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono Variable', monospace;
+  font-size: 10.5px;
+  opacity: 0.7;
+}
+
+/* 组的新建/编辑弹窗 */
+.modal-box.group-modal { width: min(560px, 92vw); }
+.group-name-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: inherit;
+  font-size: 13px;
+  margin: 8px 0;
+}
+.group-name-input:focus { outline: none; border-color: rgba(255, 196, 64, 0.5); }
+.group-loading,
+.group-empty { padding: 16px 4px; color: var(--muted, #8a8a8a); font-size: 13px; }
+.group-pick-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+.group-pick-dir { display: flex; flex-direction: column; gap: 2px; }
+.group-pick-dirname {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+  padding: 2px 2px 3px;
+}
+.group-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.group-pick-row:hover { background: rgba(56, 232, 255, 0.06); }
+.group-pick-row.on { border-color: rgba(255, 196, 64, 0.4); background: rgba(255, 196, 64, 0.07); }
+.group-pick-name { flex-shrink: 0; font-weight: 500; font-size: 12.5px; }
+.group-pick-cmd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono Variable', monospace;
+  font-size: 11px;
+  color: var(--muted, #8a8a8a);
+}

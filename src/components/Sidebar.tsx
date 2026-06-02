@@ -3,13 +3,14 @@ import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
 import { scanDir, watchDir, unwatchDir, collectContext } from '../lib/ipc'
 import { listen } from '@tauri-apps/api/event'
-import type { Command, ScanResult, CommandEntry, Proposal, ProjectContext } from '../lib/types'
+import type { Command, ScanResult, CommandEntry, CommandGroup, Proposal, ProjectContext } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
 import { AiProposeModal } from './AiProposeModal'
 import { AiContextModal } from './AiContextModal'
 import { InputModal } from './InputModal'
+import { CommandGroupModal } from './CommandGroupModal'
 import { ShimmerButton } from './ui/ShimmerButton'
 import { BlurFade } from './ui/BlurFade'
 import { DeleteButton } from './ui/DeleteButton'
@@ -24,14 +25,17 @@ type Pending =
   | { kind: 'dir'; projectId: string }
   | { kind: 'manual'; projectId: string }
   | { kind: 'manual-edit'; projectId: string; cmd: CommandEntry }
+  | { kind: 'group'; projectId: string; group?: CommandGroup }
   | null
 
 export function Sidebar({
   onRun,
+  onRunGroup,
   onOpenTerminal,
   onOpenVscode,
 }: {
   onRun: RunFn
+  onRunGroup: (group: CommandGroup) => void
   onOpenTerminal: (cwd: string) => void
   onOpenVscode: (path: string) => void
 }) {
@@ -43,6 +47,9 @@ export function Sidebar({
     addManualCommand,
     updateManualCommand,
     removeManualCommand,
+    addCommandGroup,
+    updateCommandGroup,
+    removeCommandGroup,
     removeProject,
     setActiveProject,
     focusRun,
@@ -133,6 +140,13 @@ export function Sidebar({
                 >
                   +命令
                 </button>
+                <button
+                  className="pill-btn"
+                  aria-label="新建聚合命令组"
+                  onClick={() => setPending({ kind: 'group', projectId: p.id })}
+                >
+                  +组
+                </button>
                 <DeleteButton
                   title="移除项目"
                   onClick={() =>
@@ -176,6 +190,29 @@ export function Sidebar({
                 }
               />
             ))}
+
+            {(p.commandGroups ?? []).length > 0 && (
+              <div className="cat group-cat">
+                <div className="cat-label">组</div>
+                {(p.commandGroups ?? []).map((g) => (
+                  <GroupRow
+                    key={g.id}
+                    group={g}
+                    runningLabels={runningLabels}
+                    onRun={() => onRunGroup(g)}
+                    onEdit={() => setPending({ kind: 'group', projectId: p.id, group: g })}
+                    onRemove={() =>
+                      askConfirm({
+                        title: `删除命令组「${g.name}」?`,
+                        message: '仅删除该组(不影响组内各命令本身)。',
+                        confirmText: '删除',
+                        onConfirm: () => removeCommandGroup(p.id, g.id),
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
 
             {orphanManual.length > 0 && (
               <div className="cat manual-cat">
@@ -279,6 +316,100 @@ export function Sidebar({
           }}
           onCancel={() => setPending(null)}
         />
+      )}
+
+      {pending?.kind === 'group' && (
+        <CommandGroupModal
+          directories={
+            config.projects.find((p) => p.id === pending.projectId)?.directories.map((d) => d.path) ?? []
+          }
+          manualCommands={
+            config.projects.find((p) => p.id === pending.projectId)?.manualCommands ?? []
+          }
+          initial={pending.group ?? null}
+          onSubmit={(name, members) => {
+            if (pending.group) updateCommandGroup(pending.projectId, pending.group.id, name, members)
+            else addCommandGroup(pending.projectId, name, members)
+            setPending(null)
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/// 聚合命令组行:单击一键并行全跑;展开看成员(只读);可编辑/删除。
+function GroupRow({
+  group,
+  runningLabels,
+  onRun,
+  onEdit,
+  onRemove,
+}: {
+  group: CommandGroup
+  runningLabels: Set<string>
+  onRun: () => void
+  onEdit: () => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const runningCount = group.members.filter((m) => runningLabels.has(m.label)).length
+  const total = group.members.length
+  return (
+    <div className="group-row-wrap">
+      <div
+        className={'cmd group-row' + (runningCount > 0 ? ' running' : '')}
+        onClick={onRun}
+        title="单击一键启动整组(已运行的成员跳过)"
+      >
+        <button
+          className="group-caret"
+          aria-label={open ? '收起成员' : '展开成员'}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen((v) => !v)
+          }}
+        >
+          {open ? '▾' : '▸'}
+        </button>
+        <span className="group-icon">⚡</span>
+        <span className="cmd-name">{group.name}</span>
+        <span className="group-count">{total}</span>
+        {runningCount > 0 && <span className="cmd-running-tag">运行中 {runningCount}/{total}</span>}
+        <button
+          className="edit-btn"
+          aria-label="编辑命令组"
+          title="编辑组"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit()
+          }}
+        >
+          ✎
+        </button>
+        <button
+          className="edit-btn"
+          aria-label="删除命令组"
+          title="删除组"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+        >
+          ×
+        </button>
+      </div>
+      {open && (
+        <div className="group-members">
+          {group.members.map((m, i) => (
+            <div className={'group-member' + (runningLabels.has(m.label) ? ' running' : '')} key={i}>
+              <span className="group-member-dot">{runningLabels.has(m.label) ? '●' : '·'}</span>
+              <span className="group-member-name">{m.label}</span>
+              <code className="group-member-cmd">{m.command}</code>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

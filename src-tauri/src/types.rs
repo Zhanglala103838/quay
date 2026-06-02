@@ -30,6 +30,21 @@ pub struct CommandEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupMember {
+    pub label: String,
+    pub cwd: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub members: Vec<GroupMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: String,
     pub name: String,
@@ -37,6 +52,8 @@ pub struct Project {
     pub directories: Vec<Directory>,
     #[serde(default, rename = "manualCommands")]
     pub manual_commands: Vec<CommandEntry>,
+    #[serde(default, rename = "commandGroups")]
+    pub command_groups: Vec<CommandGroup>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

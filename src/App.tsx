@@ -18,7 +18,7 @@ import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
 import { showToast } from './state/toast'
 import { Toast } from './components/Toast'
-import type { Orphan, RunEvent } from './lib/types'
+import type { CommandGroup, Orphan, RunEvent } from './lib/types'
 import quayLogo from './assets/quay-logo.png'
 import './App.css'
 
@@ -151,6 +151,26 @@ export default function App() {
     })
   }
 
+  // 一键并行跑整组:逐条 onRun(非阻塞 → 各开各的 tab)。已在运行的成员跳过,
+  // 避免把跑着的 dev server 再撞起来吃 EADDRINUSE。
+  const runGroup = (group: CommandGroup) => {
+    const running = new Set(
+      useStore.getState().runs.filter((r) => r.status === 'running').map((r) => r.label),
+    )
+    let started = 0
+    let skipped = 0
+    for (const m of group.members) {
+      if (running.has(m.label)) {
+        skipped++
+        continue
+      }
+      onRun(m.label, m.cwd, m.command)
+      started++
+    }
+    if (started === 0 && skipped > 0) showToast(`组「${group.name}」: ${skipped} 条都在运行中`)
+    else showToast(`组「${group.name}」: 已启动 ${started}${skipped > 0 ? ` · 跳过 ${skipped} 运行中` : ''}`)
+  }
+
   // 在某目录开一个可输入的交互终端(zsh -li),归到该项目右侧终端区。每次点都新开一个。
   const onOpenTerminal = (cwd: string) => {
     const dirName = cwd.split('/').filter(Boolean).pop() || cwd
@@ -211,7 +231,7 @@ export default function App() {
           </div>
         </div>
         <div className="main">
-          <Sidebar onRun={onRun} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
+          <Sidebar onRun={onRun} onRunGroup={runGroup} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
           <Workspace writers={writers} onRestart={restartRun} />
         </div>
         <RunningBar />

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
-import type { Config, RunEvent } from '../lib/types'
+import type { Config, RunEvent, GroupMember } from '../lib/types'
 import { getConfig, setConfig } from '../lib/ipc'
 import { clampPage, pageOf, type Layout } from '../lib/paging'
 
@@ -63,6 +63,9 @@ interface Store {
     command: string,
   ) => void
   removeManualCommand: (projectId: string, cmdId: string) => void
+  addCommandGroup: (projectId: string, name: string, members: GroupMember[]) => void
+  updateCommandGroup: (projectId: string, groupId: string, name: string, members: GroupMember[]) => void
+  removeCommandGroup: (projectId: string, groupId: string) => void
   removeProject: (id: string) => void
   setActiveProject: (id: string) => void
   setLayout: (n: Layout) => void
@@ -102,7 +105,7 @@ export const useStore = create<Store>((set, get) => ({
   addProject: (name) => {
     const c = structuredClone(get().config)
     const id = uuid()
-    c.projects.push({ id, name, directories: [], manualCommands: [] })
+    c.projects.push({ id, name, directories: [], manualCommands: [], commandGroups: [] })
     const patch: Partial<Store> = { config: c }
     // 第一个项目自动设为当前项目
     if (!get().activeProjectId) {
@@ -156,6 +159,33 @@ export const useStore = create<Store>((set, get) => ({
     const c = structuredClone(get().config)
     const p = c.projects.find((x) => x.id === pid)
     if (p) p.manualCommands = p.manualCommands.filter((m) => m.id !== cmdId)
+    set({ config: c })
+    get().persist()
+  },
+  addCommandGroup: (pid, name, members) => {
+    const c = structuredClone(get().config)
+    const p = c.projects.find((x) => x.id === pid)
+    if (p) {
+      if (!p.commandGroups) p.commandGroups = [] // 兜底极旧 config
+      p.commandGroups.push({ id: uuid(), name, members })
+    }
+    set({ config: c })
+    get().persist()
+  },
+  updateCommandGroup: (pid, gid, name, members) => {
+    const c = structuredClone(get().config)
+    const g = c.projects.find((p) => p.id === pid)?.commandGroups?.find((x) => x.id === gid)
+    if (g) {
+      g.name = name
+      g.members = members
+    }
+    set({ config: c })
+    get().persist()
+  },
+  removeCommandGroup: (pid, gid) => {
+    const c = structuredClone(get().config)
+    const p = c.projects.find((x) => x.id === pid)
+    if (p?.commandGroups) p.commandGroups = p.commandGroups.filter((g) => g.id !== gid)
     set({ config: c })
     get().persist()
   },

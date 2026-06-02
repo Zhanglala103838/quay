@@ -9,11 +9,17 @@ export interface CommandEntry {
   confirmBeforeRun?: boolean
   origin?: 'ai'
 }
+/// 聚合命令组成员:用「快照」自包含(label/cwd/command),不引用源命令。
+/// 扫描命令无稳定 id(rename/删 script 即丢),手动命令也可能被删,引用会悬空。
+export interface GroupMember { label: string; cwd: string; command: string }
+/// 聚合命令组:挑几条命令打包,一键并行各开各的 tab。
+export interface CommandGroup { id: string; name: string; members: GroupMember[] }
 export interface Project {
   id: string
   name: string
   directories: Directory[]
   manualCommands: CommandEntry[]
+  commandGroups: CommandGroup[]
 }
 export interface Config { projects: Project[] }
 export interface ScanResult { commands: Command[]; dirExists: boolean; detectedSources: string[] }
@@ -30,7 +36,7 @@ export type RunEvent =
   | { type: 'exit'; code: number | null }
 
 /// 内存采集:app 主进程 RSS(偏小,不含 webview helper) + 每条 running 命令的进程组树 RSS。
-export interface MemStat { runId: string; memBytes: number }
+export interface MemStat { runId: string; memBytes: number; ports: number[] }
 export interface MemReport { appBytes: number; runs: MemStat[] }
 
 /// 后端仍在跑(或最近退出)的 run,用于前端 reload 后恢复。
