@@ -11,9 +11,14 @@ mod scanner;
 mod types;
 mod watcher;
 
-use tauri::menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{Menu, MenuItem};
+// 应用菜单栏(及其 emit)仅 macOS 构建,故这些 builder / Emitter 也只在 mac 用到。
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+use tauri::{Manager, WindowEvent};
 
 /// 强制整个 app 为深色外观(NSAppearance = darkAqua)。
 /// 全屏时系统菜单栏(顶部 Apple/应用菜单条)的外观跟随 NSApp.appearance——
@@ -252,12 +257,15 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Quay")
-        .run(|app_handle, event| {
+        .run(|_app_handle, _event| {
             // macOS:点 Dock 图标(Reopen)→ 恢复隐藏到托盘的主窗口。
             // 关窗口被拦成 hide(见 on_window_event),不处理 Reopen 的话 Dock 点击不会重开窗口,
             // 只能靠托盘菜单「打开 Quay」——这正是用户遇到的现象。
-            if let tauri::RunEvent::Reopen { .. } = event {
-                if let Some(w) = app_handle.get_webview_window("main") {
+            // RunEvent::Reopen 是 macOS 专属变体(Windows 无 Dock,该 enum 变体在 win 上不存在),
+            // 故整段按 cfg 隔离;参数加下划线前缀,非 mac 平台不报未使用。
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Some(w) = _app_handle.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.set_focus();
                 }
