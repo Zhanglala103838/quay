@@ -49,6 +49,7 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 
 ### 📦 项目 · 目录 · 命令
 - **绑定项目目录**（含 `package.json`）：自动扫描 npm scripts，按用途启发式分组（开发 / 测试 / 构建…）。
+- **透传脚本展开**：`"tauri": "tauri"` 这类需要子命令才有意义的脚本，自动展开为 `tauri dev` / `tauri build`（同样覆盖 expo / cap）。
 - **AI 智能分组**（可选，接 DeepSeek）：让模型按语义把脚本重新归类，更贴合你的心智模型。
 - **手动命令**：任意 `cwd` + 任意命令，不止于 npm scripts。
 - **`package.json` 实时监听**：脚本增删改，侧栏自动重扫，无需手动刷新。
@@ -61,6 +62,8 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 
 ### 📊 进程监控
 - 底部 **Running Bar**：全局总内存 + 每条在跑命令的进程树 RSS，实时轮询。
+- **端口可见**：每条命令正在监听的端口直接显示在运行条上（lsof 实测）。
+- **同端口冲突提醒**：不同项目声明同一 dev 端口时目录头亮警告徽标；启动 `tauri dev` 前实测端口占用，占用则弹确认，避免 Tauri 窗口加载到错的项目。
 - 溢出折叠为 `+N`，点开看全部、点任一项跳转到对应终端。
 
 ### 🌿 Git 一览
@@ -157,9 +160,9 @@ A developer's desktop usually looks like this: 3–5 projects open at once, each
 
 ## Key features
 
-- **Projects · directories · commands** — bind dirs with `package.json`, auto-scan scripts, heuristic grouping, optional **AI grouping** (DeepSeek), arbitrary manual commands, live `package.json` watching.
+- **Projects · directories · commands** — bind dirs with `package.json`, auto-scan scripts, heuristic grouping, optional **AI grouping** (DeepSeek), arbitrary manual commands, live `package.json` watching. Passthrough scripts like `"tauri": "tauri"` expand into `tauri dev` / `tauri build` (also expo / cap).
 - **Terminal workspace** — read-only monitored terminals (WebGL-accelerated PTY, 5000-line scrollback) **and** fully interactive shells (`zsh -li`: type, run `vim` / `htop`, `Ctrl+C`); 1 / 2 / 4 split layouts; all terminals stay mounted (no lost output on switch); copy last 100 / 300 / all lines.
-- **Process monitoring** — a Running Bar with global + per-process memory, `+N` overflow popover, click-to-jump.
+- **Process monitoring** — a Running Bar with global + per-process memory and the **ports each command is listening on**, `+N` overflow popover, click-to-jump. **Same-port conflict warnings**: flags when two projects declare the same dev port, and probes the port before launching `tauri dev` so a window never loads the wrong project.
 - **Git at a glance** — per-directory branch / ahead-behind / dirty status, plus a branch-graph + commit-history panel.
 - **Native feel** — menubar tray (hide on close, keep running), single instance, native titlebar drag, forced dark appearance, completion notifications. **Signed + notarized** — no Gatekeeper friction.
 
