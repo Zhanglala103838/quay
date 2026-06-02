@@ -39,7 +39,7 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 - 不用再记命令、不用再 `cd`：项目的 scripts 自动列出来，点一下就跑。
 - 不用再数终端窗口：所有在跑进程汇总在底部一条 bar，每条带**实时内存**（按进程组整棵树统计），点一下跳到它的终端。
 - 不用再担心「僵尸进程」：关窗口 = 隐藏到托盘、子进程继续活；重启 App 能认领回此前跑着的进程，孤儿进程也会被侦测清理。
-- 不用再切工具：每个目录一行 git 状态（分支 / 领先落后 / 脏文件数），一键用系统 VSCode 打开、一键开一个该目录的可输入终端。
+- 不用再切工具：每个目录一行 git 状态（分支 / 领先落后 / 脏文件数），一键用你选的编辑器（VS Code / Cursor / Zed…）打开、一键开一个该目录的终端（内置或外部终端 app）。
 
 一句话——**Quay 是你本地开发进程的「控制塔 + 码头」**，让「同时推进多个项目」这件事，从一团乱麻变成一目了然。
 
@@ -59,6 +59,7 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 - **可输入交互终端**：在任意绑定目录开一个真·交互 shell（`zsh -li`），能打字、跑 `vim` / `htop`、`Ctrl+C` 中断，随分屏宽度自适应。
 - **1 / 2 / 4 分屏**：多个终端同屏并排；所有终端常驻挂载，切页 / 切项目**不丢任何输出**。
 - **常驻自绘滚动条** + 一键复制最近 100 / 300 / 全部行。
+- **内置 / 外置终端可选**：默认在 App 内开交互终端；也可切到外部终端 app（Terminal / Ghostty / cmux / iTerm2 / Warp），直接在该目录开会话。
 
 ### 📊 进程监控
 - 底部 **Running Bar**：全局总内存 + 每条在跑命令的进程树 RSS，实时轮询。
@@ -69,6 +70,12 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 ### 🌿 Git 一览
 - 每个目录一行 git 状态：当前分支、领先 / 落后、脏文件数。
 - Git 面板：分支拓扑图 + 提交历史（默认 `--all` 展示真实的分叉 / 合并）。
+
+### ⚙️ 个性化
+- **默认编辑器可选**：VS Code / Cursor / Windsurf / Zed / Sublime Text / Xcode —— 设置里挑一个，侧栏「打开编辑器」按钮的图标随之变成对应品牌字形；自动扫描本机已装哪些（未装置灰）。
+- **默认终端可选**：内置交互终端，或外部终端 app（Terminal / Ghostty / cmux / iTerm2 / Warp）。
+- **主题信号色**：内置配色预设 + 自定义五个语义信号色（强调 / AI / 运行 / 警告 / 错误）。
+- **字体 / 渲染**：终端与界面字体分别可调；GPU（WebGL）渲染开关。
 
 ### 🍎 原生体验
 - 菜单栏托盘（关窗口隐藏到托盘，进程不中断）、单实例、原生标题栏拖拽、强制深色外观、命令跑完系统通知。
@@ -156,7 +163,7 @@ A developer's desktop usually looks like this: 3–5 projects open at once, each
 - No more remembering commands or `cd`-ing — a project's scripts are listed for you, one click runs them.
 - No more counting terminal windows — every running process is summarized in one bottom bar, each with **live memory** (whole process-group RSS); click to jump to its terminal.
 - No more zombie processes — closing the window hides to tray and keeps children alive; relaunching re-adopts still-running processes, and orphans get reconciled.
-- No more tool-switching — per-directory git status at a glance, one-click "open in VSCode," one-click interactive terminal for any directory.
+- No more tool-switching — per-directory git status at a glance, one-click "open in your editor" (VS Code / Cursor / Zed…), one-click terminal for any directory (built-in or an external terminal app).
 
 ## Key features
 
@@ -164,6 +171,7 @@ A developer's desktop usually looks like this: 3–5 projects open at once, each
 - **Terminal workspace** — read-only monitored terminals (WebGL-accelerated PTY, 5000-line scrollback) **and** fully interactive shells (`zsh -li`: type, run `vim` / `htop`, `Ctrl+C`); 1 / 2 / 4 split layouts; all terminals stay mounted (no lost output on switch); copy last 100 / 300 / all lines.
 - **Process monitoring** — a Running Bar with global + per-process memory and the **ports each command is listening on**, `+N` overflow popover, click-to-jump. **Same-port conflict warnings**: flags when two projects declare the same dev port, and probes the port before launching `tauri dev` so a window never loads the wrong project.
 - **Git at a glance** — per-directory branch / ahead-behind / dirty status, plus a branch-graph + commit-history panel.
+- **Personalization** — pick your default editor (VS Code / Cursor / Windsurf / Zed / Sublime Text / Xcode; the sidebar button's icon follows your choice, installed apps auto-detected), default terminal (built-in or Terminal / Ghostty / cmux / iTerm2 / Warp), theme signal colors, and terminal/UI fonts.
 - **Native feel** — menubar tray (hide on close, keep running), single instance, native titlebar drag, forced dark appearance, completion notifications. **Signed + notarized** — no Gatekeeper friction.
 
 ## Install
