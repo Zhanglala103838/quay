@@ -127,9 +127,14 @@ export const useStore = create<Store>((set, get) => ({
   },
   addManualCommand: (pid, label, cwd, command, origin) => {
     const c = structuredClone(get().config)
-    c.projects
-      .find((p) => p.id === pid)
-      ?.manualCommands.push({ id: uuid(), label, cwd, command, long: true, ...(origin ? { origin } : {}) })
+    const proj = c.projects.find((p) => p.id === pid)
+    if (proj) {
+      // 查重:对照项目里已有命令,同 命令+目录 已存在则跳过(防 AI 重复识别/重复落地堆叠相同命令)。
+      const dup = proj.manualCommands.some((m) => m.command === command && m.cwd === cwd)
+      if (!dup) {
+        proj.manualCommands.push({ id: uuid(), label, cwd, command, long: true, ...(origin ? { origin } : {}) })
+      }
+    }
     set({ config: c })
     get().persist()
   },
