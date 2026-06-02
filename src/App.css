@@ -564,6 +564,12 @@ html.resizing .runtabs {
   line-height: 15px;
   text-transform: lowercase;
 }
+/* AI 命令推导出的工具链 tag(L1 没探测到、靠 AI 识别补足,如嵌套 java 多模块的 mvn)——紫色区分来源 */
+.dir-source.ai {
+  color: #b6a6ff;
+  background: rgba(124, 92, 255, 0.12);
+  border-color: rgba(124, 92, 255, 0.4);
+}
 .dir-count {
   font-size: 10px;
   color: var(--text-dim);
@@ -2545,12 +2551,6 @@ html.resizing .runtabs {
   line-height: 1;
 }
 .group-caret:hover { color: var(--text); }
-.group-icon {
-  flex-shrink: 0;
-  font-size: 11px;
-  filter: drop-shadow(0 0 5px rgba(255, 196, 64, 0.55));
-}
-.group-row.running .group-icon { filter: drop-shadow(0 0 6px rgba(52, 232, 164, 0.8)); }
 .group-count {
   flex-shrink: 0;
   font-size: 9.5px;

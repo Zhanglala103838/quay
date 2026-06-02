@@ -373,7 +373,6 @@ function GroupRow({
         >
           {open ? '▾' : '▸'}
         </button>
-        <span className="group-icon">⚡</span>
         <span className="cmd-name">{group.name}</span>
         <span className="group-count">{total}</span>
         {runningCount > 0 && <span className="cmd-running-tag">运行中 {runningCount}/{total}</span>}
@@ -771,6 +770,15 @@ function DirNode({
   // 单一工具链时,包管理器在目录头展示一次即可,不在每条命令重复(噪声);
   // 多工具链(go+make / npm+composer)才下放到命令级区分来源。
   const multiSource = sources.length > 1
+  // L1 没探测到工具链时(如嵌套 java 多模块,pom 在深处),从 AI/手动命令的首词推导 tag(mvn/php/...),
+  // 让该目录也有归属标识(与其它目录的 npm/php 一致)。已被 L1 探到的不重复。
+  const aiTags = Array.from(
+    new Set(
+      manualCommands
+        .map((m) => m.command.trim().split(/\s+/)[0].replace(/^\.\//, ''))
+        .filter(Boolean),
+    ),
+  ).filter((t) => !sources.includes(t))
 
   return (
     <div className="dir">
@@ -781,6 +789,9 @@ function DirNode({
         <span className="dir-name">{dirName}</span>
         {sources.map((s) => (
           <span className="dir-source" key={s}>{s}</span>
+        ))}
+        {aiTags.map((t) => (
+          <span className="dir-source ai" key={`ai-${t}`} title="由 AI 识别的命令推导">{t}</span>
         ))}
         {commands.length + manualCommands.length > 0 && (
           <span className="dir-count">{commands.length + manualCommands.length}</span>

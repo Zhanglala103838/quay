@@ -76,7 +76,7 @@ export function CommandGroupModal({
     <div className="modal" onMouseDown={onCancel}>
       <div className="modal-box group-modal" onMouseDown={(e) => e.stopPropagation()}>
         <BorderBeam duration={7} />
-        <h3>⚡ {initial ? '编辑命令组' : '新建命令组'}</h3>
+        <h3>{initial ? '编辑命令组' : '新建命令组'}</h3>
         <input
           className="group-name-input"
           value={name}
