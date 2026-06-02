@@ -11,6 +11,24 @@
 use portable_pty::CommandBuilder;
 use std::collections::{HashMap, HashSet};
 
+// ───────────────────────────── 子进程构造 ─────────────────────────────
+
+/// 构造一个 std::process::Command。**Windows 上挂 CREATE_NO_WINDOW**:Quay 是无控制台的
+/// GUI 进程,默认 spawn 任何控制台程序(git / netstat / taskkill / lsof)都会弹一个黑色
+/// cmd 窗口——被前端轮询(如逐目录拉 git 状态)时表现为"cmd 无限闪"。其它平台等价于
+/// `Command::new`。所有外部命令调用都应经此函数,而非直接 `Command::new`。
+pub fn command(program: &str) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 // ───────────────────────────── shell ─────────────────────────────
 
 /// 起 PTY 子进程用的 shell 命令(尚未设 cwd/env,由调用方补)。
@@ -106,14 +124,10 @@ pub fn kill_group(group: i32) {
     if group <= 0 {
         return;
     }
-    // taskkill /T 杀整棵进程树(group 即根 pid),/F 强制。CREATE_NO_WINDOW 避免控制台窗口闪烁。
-    let _ = no_window(std::process::Command::new("taskkill").args([
-        "/T",
-        "/F",
-        "/PID",
-        &group.to_string(),
-    ]))
-    .output();
+    // taskkill /T 杀整棵进程树(group 即根 pid),/F 强制。command() 已挂 CREATE_NO_WINDOW。
+    let _ = command("taskkill")
+        .args(["/T", "/F", "/PID", &group.to_string()])
+        .output();
 }
 
 // ─────────────────────────── 内存归并 ───────────────────────────
@@ -199,7 +213,7 @@ pub fn listening_ports(pids: &[u32]) -> HashMap<u32, Vec<u16>> {
         .map(|p| p.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let output = std::process::Command::new("lsof")
+    let output = command("lsof")
         .args([
             "-nP", // 不反查 DNS / 端口名,直接给数字(更快、好解析)
             "-iTCP",
@@ -262,7 +276,7 @@ pub fn listening_ports(pids: &[u32]) -> HashMap<u32, Vec<u16>> {
 #[cfg(unix)]
 pub fn port_listener(port: u16) -> Option<(u32, String)> {
     // -F pcn 按字段分行:p<pid> c<命令名> n<地址>。
-    let output = std::process::Command::new("lsof")
+    let output = command("lsof")
         .args([
             "-nP",
             &format!("-iTCP:{port}"),
@@ -300,18 +314,10 @@ pub fn port_listener(port: u16) -> Option<(u32, String)> {
 
 // ─────────────────────────── windows 私有助手 ───────────────────────────
 
-/// 给 Command 挂 CREATE_NO_WINDOW,避免 GUI 进程 spawn 控制台子进程时闪黑框。
-#[cfg(windows)]
-fn no_window(cmd: &mut std::process::Command) -> &mut std::process::Command {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    cmd.creation_flags(CREATE_NO_WINDOW)
-}
-
 /// `netstat -ano` 解析出所有 LISTENING 的 (pid, port)。状态/协议名不随语言区本地化。
 #[cfg(windows)]
 fn netstat_listen() -> Vec<(u32, u16)> {
-    let out = no_window(std::process::Command::new("netstat").arg("-ano")).output();
+    let out = command("netstat").arg("-ano").output();
     let Ok(o) = out else { return Vec::new() };
     let text = String::from_utf8_lossy(&o.stdout);
     let mut res = Vec::new();

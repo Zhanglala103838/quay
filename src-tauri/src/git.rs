@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,7 +80,9 @@ pub struct GitDetail {
 /// `core.quotePath=false`：让中文/非 ASCII 路径原样输出(不转义成 \xxx)，
 /// 既保证颜值，也保证 status 与 numstat 的 path 字符串能精确匹配。
 fn git(dir: &str, args: &[&str]) -> (bool, String) {
-    match Command::new("git")
+    // 经 platform::command:Windows 上挂 CREATE_NO_WINDOW,否则前端逐目录轮询 git 状态时
+    // 每条 git 子命令都会弹一个 cmd 黑框(表现为"无限闪")。
+    match crate::platform::command("git")
         .arg("-C")
         .arg(dir)
         .args(["-c", "core.quotePath=false"])
