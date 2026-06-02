@@ -561,9 +561,12 @@ function DirNode({
     setProposals(null)
   }
 
-  // 提议是否已存在于本目录命令(同 命令+绝对 cwd)——弹窗据此标「已添加」并默认不勾。
+  // 提议是否已存在于本目录命令(标签+命令+绝对 cwd 全同)——与 store 去重键一致,
+  // 弹窗据此标「已添加」并默认不勾。命令相同但标签不同的视为不同命令,不算已添加。
   const proposalExists = (p: Proposal) =>
-    manualCommands.some((m) => m.command === p.command && m.cwd === joinCwd(p.cwd))
+    manualCommands.some(
+      (m) => m.label === p.name && m.command === p.command && m.cwd === joinCwd(p.cwd),
+    )
 
   useEffect(() => {
     let active = true

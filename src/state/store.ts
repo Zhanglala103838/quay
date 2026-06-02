@@ -129,8 +129,11 @@ export const useStore = create<Store>((set, get) => ({
     const c = structuredClone(get().config)
     const proj = c.projects.find((p) => p.id === pid)
     if (proj) {
-      // 查重:对照项目里已有命令,同 命令+目录 已存在则跳过(防 AI 重复识别/重复落地堆叠相同命令)。
-      const dup = proj.manualCommands.some((m) => m.command === command && m.cwd === cwd)
+      // 查重:对照项目里已有命令,仅当 标签+命令+目录 三者全同才视为重复并跳过
+      // (防重复落地同一套提议;但命令+目录相同、标签不同的两条不同命令都保留,不误删)。
+      const dup = proj.manualCommands.some(
+        (m) => m.label === label && m.command === command && m.cwd === cwd,
+      )
       if (!dup) {
         proj.manualCommands.push({ id: uuid(), label, cwd, command, long: true, ...(origin ? { origin } : {}) })
       }
