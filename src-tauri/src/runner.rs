@@ -1,6 +1,7 @@
 use crate::identity;
 use crate::ledger::{self, LedgerEntry};
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use crate::platform;
+use portable_pty::{native_pty_system, PtySize};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
@@ -81,14 +82,8 @@ pub fn spawn_run(
         .map_err(|e| e.to_string())?;
 
     // 经登录 shell 跑;继承 PATH;PTY 已让多数工具开色,env 兜底。
-    // interactive=true → 起一个交互登录 shell(zsh -li,接 stdin),用户在 App 内直接打字;
-    // false → 一期只读监控,登录 shell 跑指定 command(zsh -lc <command>)后退出。
-    let mut cmd = CommandBuilder::new("/bin/zsh");
-    if interactive {
-        cmd.args(["-li"]);
-    } else {
-        cmd.args(["-lc", &command]);
-    }
+    // shell 选择按平台分叉(见 platform::shell_command):unix=zsh,windows=powershell。
+    let mut cmd = platform::shell_command(interactive, &command);
     cmd.cwd(&cwd);
     cmd.env("FORCE_COLOR", "1");
     cmd.env("CLICOLOR_FORCE", "1");
@@ -98,14 +93,7 @@ pub fn spawn_run(
     drop(pair.slave);
 
     let pid = child.process_id().unwrap_or(0);
-    let pgid = {
-        let g = unsafe { libc::getpgid(pid as libc::pid_t) };
-        if g > 0 {
-            g
-        } else {
-            pid as i32
-        }
-    };
+    let pgid = platform::group_id(pid);
     let killer = child.clone_killer();
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     // stdin 写入口:交互终端用它把键盘输入送进 PTY。take_writer 复制 fd,不影响 master 持有/resize。
@@ -311,22 +299,12 @@ pub fn runs_memory(reg: &Registry) -> MemReport {
     };
     let running_pgids: std::collections::HashSet<i32> = running.iter().map(|(_, pg)| *pg).collect();
 
-    // 一次遍历:RSS 累加到所属进程组;同时收集每个 running pgid 下的全部 pid(供 lsof 查端口)。
-    let mut by_pgid: HashMap<i32, u64> = HashMap::new();
-    let mut pids_by_pgid: HashMap<i32, Vec<u32>> = HashMap::new();
-    for (pid, proc_) in sys.processes() {
-        let pg = unsafe { libc::getpgid(pid.as_u32() as libc::pid_t) };
-        if pg > 0 {
-            *by_pgid.entry(pg).or_insert(0) += proc_.memory();
-            if running_pgids.contains(&pg) {
-                pids_by_pgid.entry(pg).or_default().push(pid.as_u32());
-            }
-        }
-    }
+    // 按"组"(unix=pgid / windows=根 pid 的进程树)归并 RSS,并收集组内全部 pid(供查端口)。
+    let (by_pgid, pids_by_pgid) = platform::aggregate_group_memory(&sys, &running_pgids);
 
-    // 端口:把所有相关 pid 一次性丢给 lsof 拿 pid→ports,再按 pgid 去重归并。
+    // 端口:把所有相关 pid 一次性查出 pid→ports,再按组去重归并。
     let all_pids: Vec<u32> = pids_by_pgid.values().flatten().copied().collect();
-    let ports_by_pid = listening_ports(&all_pids);
+    let ports_by_pid = platform::listening_ports(&all_pids);
     let mut ports_by_pgid: HashMap<i32, Vec<u16>> = HashMap::new();
     for (pg, pids) in &pids_by_pgid {
         let mut set: std::collections::BTreeSet<u16> = std::collections::BTreeSet::new();
@@ -350,58 +328,6 @@ pub fn runs_memory(reg: &Registry) -> MemReport {
     MemReport { app_bytes, runs }
 }
 
-/// 用 lsof 查这些 pid 正在 LISTEN 的 TCP 端口(同 uid 即可见,不需 sudo)。
-/// 限定 -p <pids> 避免全量扫描,单次调用即可;lsof 缺失/失败 → 返回空表(端口栏静默不显示)。
-/// -F pn 输出按字段前缀分行:p<pid> 开一段进程,后续 n<地址> 是该进程的监听点。
-fn listening_ports(pids: &[u32]) -> HashMap<u32, Vec<u16>> {
-    let mut out: HashMap<u32, Vec<u16>> = HashMap::new();
-    if pids.is_empty() {
-        return out;
-    }
-    let pid_arg = pids
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    let output = std::process::Command::new("lsof")
-        .args([
-            "-nP", // 不反查 DNS / 端口名,直接给数字(更快、好解析)
-            "-iTCP",
-            "-sTCP:LISTEN",
-            "-a", // -i 与 -p 取交集(否则是并集)
-            "-p",
-            &pid_arg,
-            "-F",
-            "pn",
-        ])
-        .output();
-    let Ok(o) = output else { return out };
-    let text = String::from_utf8_lossy(&o.stdout);
-    let mut cur: Option<u32> = None;
-    for line in text.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        let (tag, val) = (&line[..1], &line[1..]);
-        match tag {
-            "p" => cur = val.parse::<u32>().ok(),
-            "n" => {
-                // 地址形如 *:3000 / 127.0.0.1:5173 / [::1]:8080,端口在最后一个 ':' 之后。
-                if let Some(pid) = cur {
-                    if let Some(port) = val.rsplit(':').next().and_then(|s| s.parse::<u16>().ok()) {
-                        let v = out.entry(pid).or_default();
-                        if !v.contains(&port) {
-                            v.push(port);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    out
-}
-
 pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {
     reg.0
         .lock()
@@ -422,14 +348,11 @@ pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {
         .collect()
 }
 
-/// 停止:SIGTERM 进程组(负 pgid),killer 兜底。
+/// 停止:杀整组进程树(unix=kill(-pgid) / windows=taskkill /T),killer 兜底。
 pub fn stop_run(reg: &Registry, run_id: &str) -> Result<(), String> {
     let mut map = reg.0.lock().unwrap();
     if let Some(h) = map.get_mut(run_id) {
-        // SAFETY: 负 pid = 进程组;子进程在自己的新进程组,不波及 Quay
-        unsafe {
-            libc::kill(-h.pgid, libc::SIGTERM);
-        }
+        platform::kill_group(h.pgid);
         let _ = h.killer.kill();
     }
     map.remove(run_id);
@@ -478,6 +401,8 @@ mod tests {
     /// 🔴 核心不变量验证:PTY 子进程必须在独立进程组,
     /// 否则 stop_run 的 kill(-pgid) 会连 Quay 自己一起干掉。
     /// 同时验证:输出能流出 + stop 真能杀死子进程。
+    /// (进程组语义是 POSIX 专属,故仅在 unix 验证;windows 的等价语义见 platform::kill_group。)
+    #[cfg(unix)]
     #[test]
     fn child_in_own_process_group_streams_and_stops() {
         let reg = Registry::default();

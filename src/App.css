@@ -141,6 +141,10 @@
   margin-right: auto;
   padding-left: 68px;
 }
+/* Windows:窗口用原生装饰(min/max/close 在原生标题栏),无交通灯,故左侧不留白 */
+.os-windows .titlebar-left {
+  padding-left: 8px;
+}
 /* 侧栏折叠按钮(lucide panel-left),样式与 .gear-btn 一致 */
 .panel-btn {
   display: inline-flex;

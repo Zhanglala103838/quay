@@ -1,0 +1,70 @@
+name: Windows Build
+
+# Quay 在 mac 本地签名+公证发版(见 scripts/build-mac.sh),Windows 没有本地机器,
+# 故在 GitHub 托管的 windows-latest runner 上打包 NSIS(.exe)+ MSI(.msi)。
+# 触发:手动(workflow_dispatch)随时打一版;打 v* tag 时额外把安装包附到 GitHub Release。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+# 打 tag 时要创建/更新 Release 并上传资产,需要写 contents 权限。
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm 必须先于 setup-node 安装,setup-node 的 pnpm 缓存才找得到它。
+      # lockfile 为 v6.0 格式(pnpm 8 生成),固定 pnpm 8 以匹配。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Rust 编译缓存(workspace 在 src-tauri),大幅缩短二次构建。
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: pnpm install --no-frozen-lockfile
+
+      # tauri build 会先跑 beforeBuildCommand(pnpm build → vite 产出 dist),
+      # 再 cargo build --release,最后把 NSIS + MSI 打进 src-tauri/target/release/bundle/。
+      # WebView2 在 windows-latest 已预装;NSIS 由 tauri 自动拉取。
+      - name: Build Tauri app (Windows)
+        run: pnpm tauri build
+
+      - name: Upload installers (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: quay-windows-installers
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+
+      # 仅在打 v* tag 时:把安装包附到对应 Release。
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi

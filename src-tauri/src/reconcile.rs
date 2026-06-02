@@ -36,8 +36,5 @@ pub fn find_orphans() -> Vec<Orphan> {
 }
 
 pub fn kill_orphan(pgid: i32) {
-    // SAFETY: 负 pid = 进程组
-    unsafe {
-        libc::kill(-pgid, libc::SIGTERM);
-    }
+    crate::platform::kill_group(pgid);
 }

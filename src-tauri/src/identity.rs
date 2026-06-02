@@ -7,10 +7,9 @@ pub struct ProcSnapshot {
     pub exe: String,
 }
 
-/// kill(pid,0)：存活探测(同 uid 即可,不需父子关系)。
+/// 存活探测(unix=kill(pid,0) / windows=sysinfo 单 pid 刷新),平台细节见 platform。
 pub fn pid_alive(pid: u32) -> bool {
-    // SAFETY: signal 0 不发信号,只做权限/存活检查
-    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    crate::platform::pid_alive(pid)
 }
 
 pub fn process_snapshot(pid: u32) -> Option<ProcSnapshot> {

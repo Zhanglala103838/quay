@@ -29,12 +29,15 @@ tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 portable-pty = "0.8"
 sysinfo = "0.32"
-libc = "0.2"
 uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 # 监听绑定目录的 package.json:变更(防抖后)emit pkg-changed,前端重扫 scripts。
 # full 版会把 atomic-save 的 rename from/to 合并成单事件,避免编辑器保存触发重复扫。
 notify-debouncer-full = "0.5"
+
+# unix 专属:进程组/信号(getpgid / kill(-pgid) / kill(pid,0))。Windows 走 platform.rs 的进程树方案,不需 libc。
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # macOS 原生:强制 app 级深色外观,让全屏时系统菜单栏跟随深色(与玻璃 UI 一致)
 [target.'cfg(target_os = "macos")'.dependencies]

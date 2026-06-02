@@ -89,36 +89,7 @@ pub struct PortBusy {
 #[tauri::command]
 pub fn dev_port_busy(cwd: String) -> Option<PortBusy> {
     let port = scanner::dev_url_port(std::path::Path::new(&cwd))?;
-    port_listener(port).map(|(pid, process)| PortBusy { port, pid, process })
-}
-
-/// 用 lsof 查谁在 LISTEN 这个端口(取第一个)。lsof 缺失/端口空闲 → None。
-/// -F pcn 按字段分行:p<pid> c<命令名> n<地址>。
-fn port_listener(port: u16) -> Option<(u32, String)> {
-    let output = std::process::Command::new("lsof")
-        .args([
-            "-nP",
-            &format!("-iTCP:{port}"),
-            "-sTCP:LISTEN",
-            "-F",
-            "pcn",
-        ])
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    let mut pid: Option<u32> = None;
-    let mut name = String::new();
-    for line in text.lines() {
-        match line.split_at(1) {
-            ("p", v) => pid = v.parse().ok(),
-            ("c", v) => name = v.to_string(),
-            _ => {}
-        }
-        if pid.is_some() && !name.is_empty() {
-            break;
-        }
-    }
-    pid.map(|p| (p, name))
+    crate::platform::port_listener(port).map(|(pid, process)| PortBusy { port, pid, process })
 }
 
 #[tauri::command]
@@ -148,6 +119,7 @@ pub fn write_run(reg: State<Registry>, run_id: String, data: String) -> Result<(
 /// 终端 app —— Terminal/Ghostty/cmux 等均声明了 folder 文档类型 —— 则在该目录开会话)。
 /// 无需任何 CLI。按 `bundle_ids` 顺序尝试,命中第一个即成功;一个都没装(或都启动失败)
 /// 返回 Err,前端据此弹「未检测到 X」。async = 在线程池跑,`open` 阻塞时不卡 UI 主线程。
+#[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn open_with_app(path: String, bundle_ids: Vec<String>) -> Result<(), String> {
     use std::process::Command;
@@ -164,12 +136,21 @@ pub async fn open_with_app(path: String, bundle_ids: Vec<String>) -> Result<(), 
     Err("未检测到目标应用".into())
 }
 
+/// 非 macOS:外部编辑器/终端启动依赖 macOS LaunchServices + bundle id,无对应概念,优雅降级。
+/// (Windows 的编辑器/终端启动将另行以可执行名 + PATH 方案支持,见 README 已知限制。)
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub async fn open_with_app(_path: String, _bundle_ids: Vec<String>) -> Result<(), String> {
+    Err("当前平台暂不支持按应用打开".into())
+}
+
 /// 扫描给定 bundle id 哪些已安装,返回已装子集。用 `mdfind`(Spotlight 元数据查询):
 /// 只读索引,**绝不启动 app**。这点至关重要 —— 早期版本用 `osascript 'path to application id'`,
 /// 在本机会真把被解析到的 todesktop/Electron 应用(Cursor、cmux 等)启动起来(打开设置即弹一堆窗口)。
 /// mdfind 命中即返回路径(stdout 非空),未装则 stdout 为空。bundle id 仅含 [A-Za-z0-9.-],无引号注入风险。
 /// **设为 async**:本机要顺序 spawn 多达十几个 mdfind 进程,同步 command 会跑在 UI 主线程上把窗口卡住
 /// (打开设置时「点击像没生效」)。async command 由 Tauri 丢到线程池跑,主线程不阻塞(同 git_brief 的处理)。
+#[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn detect_apps(bundle_ids: Vec<String>) -> Vec<String> {
     use std::process::Command;
@@ -183,6 +164,13 @@ pub async fn detect_apps(bundle_ids: Vec<String>) -> Vec<String> {
                 .unwrap_or(false)
         })
         .collect()
+}
+
+/// 非 macOS:bundle id 探测无对应概念,返回空集(前端据此显示"未检测到",按钮自然隐藏)。
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub async fn detect_apps(_bundle_ids: Vec<String>) -> Vec<String> {
+    Vec::new()
 }
 
 #[tauri::command]

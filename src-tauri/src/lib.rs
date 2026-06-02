@@ -4,6 +4,7 @@ mod context;
 mod git;
 mod identity;
 mod ledger;
+mod platform;
 mod reconcile;
 mod runner;
 mod scanner;
@@ -150,8 +151,12 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // ── 原生应用菜单栏(macOS):标准 系统/编辑/窗口 菜单 + 自定义快捷键 ──
+            // ── 原生应用菜单栏(macOS only):标准 系统/编辑/窗口 菜单 + 自定义快捷键 ──
             // 自定义项发 emit 给前端处理(事件名禁含 '.',用连字符)。
+            // Windows 不挂原生菜单栏:services/hide_others/show_all 等是 mac 专属项,且与自绘
+            // 标题栏冲突;设置/清屏/切侧栏在 UI 内仍可点击,故仅缺这几个键盘快捷键。
+            #[cfg(target_os = "macos")]
+            {
             let settings_item = MenuItemBuilder::with_id("menu-open-settings", "设置…")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
@@ -209,6 +214,7 @@ pub fn run() {
                     let _ = app.emit(id, ());
                 }
             });
+            } // end #[cfg(target_os = "macos")] 应用菜单栏
             Ok(())
         })
         // 关窗口 = 隐藏到托盘(后端不退,子进程继续活,天然无孤儿)
