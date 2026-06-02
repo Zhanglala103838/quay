@@ -336,8 +336,8 @@ function CmdRow({
         title={running ? '单击查看 · 双击再次运行' : undefined}
       >
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
-        <span className="cmd-name">{display}</span>
         {origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">✨</span>}
+        <span className="cmd-name">{display}</span>
         {source && <span className="cmd-source">{source}</span>}
         {running && <span className="cmd-running-tag">运行中</span>}
         {configured && (
