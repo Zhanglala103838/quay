@@ -145,6 +145,19 @@ export function Sidebar({
               (dragId === p.id ? ' dragging' : '') +
               (overId === p.id && dragId !== p.id ? ' drop-over' : '')
             }
+            // 落点覆盖整张卡片(展开后正文很高,不能只认细头部);dragover 必须 preventDefault 才允许 drop
+            onDragOver={(e) => {
+              if (dragId && dragId !== p.id) {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (overId !== p.id) setOverId(p.id)
+              }
+            }}
+            onDrop={(e) => {
+              if (!dragId || dragId === p.id) return
+              e.preventDefault()
+              onProjectDrop(p.id)
+            }}
           >
             <div
               className="project-head"
@@ -154,17 +167,8 @@ export function Sidebar({
               onDragStart={(e) => {
                 setDragId(p.id)
                 e.dataTransfer.effectAllowed = 'move'
-              }}
-              onDragOver={(e) => {
-                if (dragId && dragId !== p.id) {
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  if (overId !== p.id) setOverId(p.id)
-                }
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                onProjectDrop(p.id)
+                // WKWebView 需要 setData 才认作合法拖拽,否则 drop 不触发
+                e.dataTransfer.setData('text/plain', p.id)
               }}
               onDragEnd={() => {
                 setDragId(null)
