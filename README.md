@@ -85,9 +85,14 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 
 ## 安装
 
-> 目前仅提供 **macOS (Apple Silicon)** 构建。
+前往 [Releases](https://github.com/Zhanglala103838/quay/releases) 下载对应平台的安装包：
 
-前往 [Releases](https://github.com/Zhanglala103838/quay/releases) 下载最新的 `Quay_x.y.z_aarch64.dmg`，打开后把 Quay 拖进「应用程序」即可。已经过 Apple 公证，无需任何「允许未知开发者」操作。
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| **macOS** (Apple Silicon) | `Quay_x.y.z_aarch64.dmg` | 已经过 Apple 公证，打开拖进「应用程序」即可，无需任何「允许未知开发者」操作 |
+| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | 实验性 · **未代码签名**，首次运行 SmartScreen 提示时点「更多信息 → 仍要运行」 |
+
+> Windows 版为新移植（Tauri 跨平台），核心的多命令并行 / 实时内存 / 端口可见均已具备；"用编辑器/终端打开目录"暂未支持（依赖 macOS 机制）。
 
 ---
 
@@ -112,6 +117,8 @@ bash scripts/build-mac.sh
 ```
 
 > 脚本会签名 `.app`、公证、staple，并把 `.dmg` 单独提交 Apple 公证后做三层校验。凭据通过环境变量传入，详见脚本头部注释。
+
+**Windows 构建**：无需本地 Windows 机器，由 GitHub Actions 在 `windows-latest` 上打包（见 `.github/workflows/release-windows.yml`）。手动触发产出 NSIS + MSI artifact；打 `v*` tag 时自动附加到对应 Release。
 
 ---
 
@@ -176,7 +183,14 @@ A developer's desktop usually looks like this: 3–5 projects open at once, each
 
 ## Install
 
-macOS (Apple Silicon) only for now. Grab the latest `Quay_x.y.z_aarch64.dmg` from [Releases](https://github.com/Zhanglala103838/quay/releases) — it's Apple-notarized, so just drag it into Applications.
+Grab the latest build for your platform from [Releases](https://github.com/Zhanglala103838/quay/releases):
+
+| Platform | File | Notes |
+|----------|------|-------|
+| **macOS** (Apple Silicon) | `Quay_x.y.z_aarch64.dmg` | Apple-notarized — just drag into Applications, no Gatekeeper friction |
+| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | Experimental · **not code-signed** — on first run click "More info → Run anyway" past SmartScreen |
+
+> Windows is a fresh Tauri cross-platform port: parallel commands, live per-process memory, and port visibility all work; "open dir in editor/terminal" is not yet supported there (relies on a macOS mechanism).
 
 ## Build from source
 
