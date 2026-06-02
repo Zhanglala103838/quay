@@ -6,3 +6,6 @@ src-tauri/target/
 
 # 本地签名凭据(勿提交)
 scripts/.env.local
+
+# 内部 spec/plan(保留本地,不入公开仓库)
+docs/superpowers/
