@@ -14,7 +14,7 @@ import { useStore, type RunState } from './state/store'
 import { useSettings } from './state/settings'
 import { applyUiFontVars } from './lib/fonts'
 import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openWithApp, devPortBusy } from './lib/ipc'
-import { editorByKey, terminalByKey } from './lib/launchers'
+import { editorByKey, terminalByKey, launchArgs, IS_WINDOWS } from './lib/launchers'
 import { askConfirm } from './state/confirm'
 import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
@@ -204,17 +204,18 @@ export default function App() {
     const t = useSettings.getState().tools
     if (t.terminalMode === 'external') {
       const term = terminalByKey(t.externalTerminal)
-      openWithApp(cwd, term.bundleIds).catch(() => showToast(`未检测到 ${term.label}`))
+      openWithApp(cwd, launchArgs(term)).catch(() => showToast(`未检测到 ${term.label}`))
       return
     }
-    const dirName = cwd.split('/').filter(Boolean).pop() || cwd
-    onRun(`${dirName} ⌨`, cwd, 'zsh -li', true)
+    // 内置交互终端:目录名取末段(兼容 Windows 反斜杠路径);命令仅作展示(交互 shell 由后端按平台选)。
+    const dirName = cwd.split(/[/\\]/).filter(Boolean).pop() || cwd
+    onRun(`${dirName} ⌨`, cwd, IS_WINDOWS ? 'powershell' : 'zsh -li', true)
   }
 
   // 用设定的默认编辑器打开该目录;没装则浮层提示。
   const onOpenEditor = (path: string) => {
     const ed = editorByKey(useSettings.getState().tools.editor)
-    openWithApp(path, ed.bundleIds).catch(() => showToast(`未检测到 ${ed.label}`))
+    openWithApp(path, launchArgs(ed)).catch(() => showToast(`未检测到 ${ed.label}`))
   }
 
   // 重新启动:用新 runId 起同一条命令替换旧格。运行中要先停、等进程真正退出

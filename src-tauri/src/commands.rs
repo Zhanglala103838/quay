@@ -136,9 +136,31 @@ pub async fn open_with_app(path: String, bundle_ids: Vec<String>) -> Result<(), 
     Err("未检测到目标应用".into())
 }
 
-/// 非 macOS:外部编辑器/终端启动依赖 macOS LaunchServices + bundle id,无对应概念,优雅降级。
-/// (Windows 的编辑器/终端启动将另行以可执行名 + PATH 方案支持,见 README 已知限制。)
-#[cfg(not(target_os = "macos"))]
+/// Windows:`bundle_ids` 实为启动 argv(见前端 launchers.win.argv):argv[0]=程序,其余为参数,
+/// 字面量 "{dir}" 替换为目标目录。编辑器走 `cmd /c <cli> <dir>`(cli 多为 .cmd 垫片,
+/// CreateProcess 不能直接执行,必须经 cmd);终端走 `cmd /c start … <dir>` 在新窗口开会话。
+/// platform::command 已挂 CREATE_NO_WINDOW,中转的 cmd 不闪黑框(被启动的编辑器/终端自带窗口)。
+#[cfg(windows)]
+#[tauri::command]
+pub async fn open_with_app(path: String, bundle_ids: Vec<String>) -> Result<(), String> {
+    let mut it = bundle_ids.into_iter();
+    let program = it.next().ok_or("空启动命令")?;
+    let args: Vec<String> = it
+        .map(|a| if a == "{dir}" { path.clone() } else { a })
+        .collect();
+    let status = crate::platform::command(&program)
+        .args(&args)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("未检测到目标应用".into())
+    }
+}
+
+/// 其它平台(Linux):暂不支持按应用打开,优雅降级。
+#[cfg(not(any(target_os = "macos", windows)))]
 #[tauri::command]
 pub async fn open_with_app(_path: String, _bundle_ids: Vec<String>) -> Result<(), String> {
     Err("当前平台暂不支持按应用打开".into())
@@ -166,8 +188,26 @@ pub async fn detect_apps(bundle_ids: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-/// 非 macOS:bundle id 探测无对应概念,返回空集(前端据此显示"未检测到",按钮自然隐藏)。
-#[cfg(not(target_os = "macos"))]
+/// Windows:`bundle_ids` 实为 PATH 探测名(见前端 launchers.win.probe);用 `where <name>`
+/// 判断是否在 PATH(code/cursor/wt/powershell/cmd…),返回命中的子集。platform::command 已挂
+/// CREATE_NO_WINDOW,逐个 where 不闪黑框。
+#[cfg(windows)]
+#[tauri::command]
+pub async fn detect_apps(bundle_ids: Vec<String>) -> Vec<String> {
+    bundle_ids
+        .into_iter()
+        .filter(|name| {
+            crate::platform::command("where")
+                .arg(name)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// 其它平台(Linux):无统一应用探测机制,返回空集(前端显示"未检测到")。
+#[cfg(not(any(target_os = "macos", windows)))]
 #[tauri::command]
 pub async fn detect_apps(_bundle_ids: Vec<String>) -> Vec<String> {
     Vec::new()

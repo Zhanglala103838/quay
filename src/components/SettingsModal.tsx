@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useSettings, DEEPSEEK_MODELS, type DeepSeekSettings } from '../state/settings'
 import { testConnection } from '../lib/deepseek'
 import { detectApps } from '../lib/ipc'
-import { EDITORS, TERMINALS, isInstalled } from '../lib/launchers'
+import { editorsForPlatform, terminalsForPlatform, isInstalled, probeIds } from '../lib/launchers'
 import { EditorIcon, TerminalIcon } from './AppIcons'
 import { BorderBeam } from './ui/BorderBeam'
 import { ColorField, parseColor } from '@heroui/react'
@@ -160,7 +160,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   // 打开设置时扫描本机已装的编辑器/终端(走 LaunchServices,不依赖 Spotlight)。
   useEffect(() => {
-    const ids = [...EDITORS, ...TERMINALS].flatMap((d) => d.bundleIds)
+    const ids = [...editorsForPlatform(), ...terminalsForPlatform()].flatMap(probeIds)
     detectApps(ids)
       .then((found) => setInstalled(new Set(found)))
       .catch(() => {})
@@ -271,7 +271,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </p>
               <div className="field">
                 <div className="field-chips">
-                  {EDITORS.map((e) => {
+                  {editorsForPlatform().map((e) => {
                     const ok = isInstalled(e, installed)
                     return (
                       <button
@@ -320,7 +320,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 <div className="field">
                   <label>外置终端</label>
                   <div className="field-chips">
-                    {TERMINALS.map((t) => {
+                    {terminalsForPlatform().map((t) => {
                       const ok = isInstalled(t, installed)
                       return (
                         <button
