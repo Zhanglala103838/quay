@@ -240,6 +240,8 @@ pub fn run() {
             commands::kill_orphan,
             commands::git_brief,
             commands::git_detail,
+            commands::dev_ports,
+            commands::dev_port_busy,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Quay")

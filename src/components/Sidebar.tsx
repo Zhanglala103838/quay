@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
-import { scanDir, watchDir, unwatchDir, collectContext } from '../lib/ipc'
+import { scanDir, watchDir, unwatchDir, collectContext, devPorts } from '../lib/ipc'
 import { listen } from '@tauri-apps/api/event'
-import type { Command, ScanResult, CommandEntry, CommandGroup, Proposal, ProjectContext } from '../lib/types'
+import type { Command, ScanResult, CommandEntry, CommandGroup, Proposal, ProjectContext, DevPort } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
@@ -85,6 +85,25 @@ export function Sidebar({
       localStorage.setItem('quay.collapsedProjects', JSON.stringify([...next]))
       return next
     })
+
+  // "不同项目同端口"静态体检:拉各目录声明的 Tauri dev 端口,配置变化时刷新。
+  const [devPortList, setDevPortList] = useState<DevPort[]>([])
+  useEffect(() => {
+    devPorts().then(setDevPortList).catch(() => setDevPortList([]))
+  }, [config])
+  // 某目录是否与"别的项目"撞了 dev 端口;撞了返回端口号 + 对方项目名(同项目内多目录共端口不算冲突)。
+  const conflictForPath = (p: string): { port: number; others: string[] } | null => {
+    const entry = devPortList.find((e) => e.path === p)
+    if (!entry) return null
+    const others = Array.from(
+      new Set(
+        devPortList
+          .filter((e) => e.port === entry.port && e.projectId !== entry.projectId)
+          .map((e) => e.projectName),
+      ),
+    )
+    return others.length > 0 ? { port: entry.port, others } : null
+  }
 
   // 拖动重排:dragId=正在拖的项目;overId=悬停目标(画插入高亮)。drop 时落盘。
   const [dragId, setDragId] = useState<string | null>(null)
@@ -237,6 +256,7 @@ export function Sidebar({
                 key={d.id}
                 projectId={p.id}
                 path={d.path}
+                portConflict={conflictForPath(d.path)}
                 manualCommands={manualByDir.get(d.id) ?? []}
                 onRun={onRun}
                 onView={viewRun}
@@ -666,6 +686,7 @@ function PrefixGroupNode({
 function DirNode({
   projectId,
   path,
+  portConflict,
   manualCommands,
   onRun,
   onView,
@@ -678,6 +699,7 @@ function DirNode({
 }: {
   projectId: string
   path: string
+  portConflict: { port: number; others: string[] } | null
   manualCommands: CommandEntry[]
   onRun: RunFn
   onView: (label: string) => void
@@ -866,6 +888,14 @@ function DirNode({
         {aiTags.map((t) => (
           <span className="dir-source ai" key={`ai-${t}`} title="由 AI 识别的命令推导">{t}</span>
         ))}
+        {portConflict && (
+          <span
+            className="dir-port-conflict"
+            title={`dev 端口 ${portConflict.port} 与「${portConflict.others.join('、')}」相同。两个 Tauri 项目都写死加载 localhost:${portConflict.port},同时启动时谁先占住端口,另一个的窗口就会加载到错的应用。建议给其中一个改 dev 端口。`}
+          >
+            端口 {portConflict.port} 撞「{portConflict.others.join('、')}」
+          </span>
+        )}
         {commands.length + manualCommands.length > 0 && (
           <span className="dir-count">{commands.length + manualCommands.length}</span>
         )}

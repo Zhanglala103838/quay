@@ -39,6 +39,7 @@ export function RunningBar() {
     }
   }, [runningKey])
   const memOf = (runId: string) => fmtMem(mem?.runs.find((s) => s.runId === runId)?.memBytes ?? 0)
+  const portsOf = (runId: string) => mem?.runs.find((s) => s.runId === runId)?.ports ?? []
   // 「全局」= Quay 主进程 + 所有在跑命令的进程树之和(故必 ≥ 任何单条命令)。
   // 注:仍不含 WKWebView helper(WebContent/GPU/Networking)进程,真实物理占用会再高一些。
   const totalBytes = mem ? mem.appBytes + mem.runs.reduce((a, s) => a + s.memBytes, 0) : 0
@@ -96,6 +97,11 @@ export function RunningBar() {
               onClick={() => focusRun(r.runId)}
             >
               <span className="chip-label">{r.label}</span>
+              {portsOf(r.runId).map((p) => (
+                <span key={p} className="chip-port" title={`监听端口 ${p}`}>
+                  :{p}
+                </span>
+              ))}
               <span className="chip-mem">{memOf(r.runId)}</span>
             </span>
           ))}
@@ -127,6 +133,11 @@ export function RunningBar() {
                 }}
               >
                 <span className="chip-label">{r.label}</span>
+                {portsOf(r.runId).map((p) => (
+                  <span key={p} className="chip-port" title={`监听端口 ${p}`}>
+                    :{p}
+                  </span>
+                ))}
                 <span className="chip-mem">{memOf(r.runId)}</span>
               </div>
             ))}

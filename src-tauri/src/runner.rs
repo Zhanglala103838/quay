@@ -270,6 +270,8 @@ pub fn attach_run(reg: &Registry, run_id: &str, sink: Sink) {
 pub struct MemStat {
     pub run_id: String,
     pub mem_bytes: u64,
+    /// 该命令进程组(pgid 整棵树)正在 LISTEN 的 TCP 端口,去重升序。空 = 没监听/没探到。
+    pub ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -307,14 +309,33 @@ pub fn runs_memory(reg: &Registry) -> MemReport {
             .map(|(id, h)| (id.clone(), h.pgid))
             .collect()
     };
+    let running_pgids: std::collections::HashSet<i32> = running.iter().map(|(_, pg)| *pg).collect();
 
-    // 把每个进程的 RSS 累加到它所属的进程组。
+    // 一次遍历:RSS 累加到所属进程组;同时收集每个 running pgid 下的全部 pid(供 lsof 查端口)。
     let mut by_pgid: HashMap<i32, u64> = HashMap::new();
+    let mut pids_by_pgid: HashMap<i32, Vec<u32>> = HashMap::new();
     for (pid, proc_) in sys.processes() {
         let pg = unsafe { libc::getpgid(pid.as_u32() as libc::pid_t) };
         if pg > 0 {
             *by_pgid.entry(pg).or_insert(0) += proc_.memory();
+            if running_pgids.contains(&pg) {
+                pids_by_pgid.entry(pg).or_default().push(pid.as_u32());
+            }
         }
+    }
+
+    // 端口:把所有相关 pid 一次性丢给 lsof 拿 pid→ports,再按 pgid 去重归并。
+    let all_pids: Vec<u32> = pids_by_pgid.values().flatten().copied().collect();
+    let ports_by_pid = listening_ports(&all_pids);
+    let mut ports_by_pgid: HashMap<i32, Vec<u16>> = HashMap::new();
+    for (pg, pids) in &pids_by_pgid {
+        let mut set: std::collections::BTreeSet<u16> = std::collections::BTreeSet::new();
+        for pid in pids {
+            if let Some(ps) = ports_by_pid.get(pid) {
+                set.extend(ps.iter().copied());
+            }
+        }
+        ports_by_pgid.insert(*pg, set.into_iter().collect());
     }
 
     let runs = running
@@ -322,10 +343,63 @@ pub fn runs_memory(reg: &Registry) -> MemReport {
         .map(|(run_id, pgid)| MemStat {
             run_id,
             mem_bytes: *by_pgid.get(&pgid).unwrap_or(&0),
+            ports: ports_by_pgid.get(&pgid).cloned().unwrap_or_default(),
         })
         .collect();
 
     MemReport { app_bytes, runs }
+}
+
+/// 用 lsof 查这些 pid 正在 LISTEN 的 TCP 端口(同 uid 即可见,不需 sudo)。
+/// 限定 -p <pids> 避免全量扫描,单次调用即可;lsof 缺失/失败 → 返回空表(端口栏静默不显示)。
+/// -F pn 输出按字段前缀分行:p<pid> 开一段进程,后续 n<地址> 是该进程的监听点。
+fn listening_ports(pids: &[u32]) -> HashMap<u32, Vec<u16>> {
+    let mut out: HashMap<u32, Vec<u16>> = HashMap::new();
+    if pids.is_empty() {
+        return out;
+    }
+    let pid_arg = pids
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let output = std::process::Command::new("lsof")
+        .args([
+            "-nP", // 不反查 DNS / 端口名,直接给数字(更快、好解析)
+            "-iTCP",
+            "-sTCP:LISTEN",
+            "-a", // -i 与 -p 取交集(否则是并集)
+            "-p",
+            &pid_arg,
+            "-F",
+            "pn",
+        ])
+        .output();
+    let Ok(o) = output else { return out };
+    let text = String::from_utf8_lossy(&o.stdout);
+    let mut cur: Option<u32> = None;
+    for line in text.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let (tag, val) = (&line[..1], &line[1..]);
+        match tag {
+            "p" => cur = val.parse::<u32>().ok(),
+            "n" => {
+                // 地址形如 *:3000 / 127.0.0.1:5173 / [::1]:8080,端口在最后一个 ':' 之后。
+                if let Some(pid) = cur {
+                    if let Some(port) = val.rsplit(':').next().and_then(|s| s.parse::<u16>().ok()) {
+                        let v = out.entry(pid).or_default();
+                        if !v.contains(&port) {
+                            v.push(port);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 pub fn list_runs(reg: &Registry) -> Vec<RunInfo> {

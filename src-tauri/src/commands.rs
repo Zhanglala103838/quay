@@ -42,6 +42,85 @@ pub fn set_config(cfg: Config) -> Result<(), String> {
     config::save_config(&cfg)
 }
 
+/// 某绑定目录声明的 Tauri dev 端口(来自 tauri.conf devUrl)。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevPort {
+    pub project_id: String,
+    pub project_name: String,
+    pub path: String,
+    pub port: u16,
+}
+
+/// 扫描所有已配置目录,收集各自声明的 Tauri dev 端口。
+/// 前端据此做"不同项目同端口"静态体检(同端口 ≥2 个不同项目 → 挂警告徽标)。
+/// 只返回真有 tauri.conf devUrl 端口的目录,无则跳过(不猜)。
+#[tauri::command]
+pub fn dev_ports() -> Vec<DevPort> {
+    let cfg = config::load_config();
+    let mut out = Vec::new();
+    for p in &cfg.projects {
+        for d in &p.directories {
+            if let Some(port) = scanner::dev_url_port(std::path::Path::new(&d.path)) {
+                out.push(DevPort {
+                    project_id: p.id.clone(),
+                    project_name: p.name.clone(),
+                    path: d.path.clone(),
+                    port,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// 端口被谁占了:pid + 进程名(lsof 实测,系统级,含非 Quay 启动的进程)。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortBusy {
+    pub port: u16,
+    pub pid: u32,
+    pub process: String,
+}
+
+/// 启动前探测:该 cwd 的 Tauri 项目声明的 dev 端口此刻是否已被占用。
+/// 返回 Some → 占用者信息(前端弹一次性确认,防加载到错应用);
+/// 返回 None → 没声明端口 / 端口空闲(完全不打扰,这是边界关键)。
+#[tauri::command]
+pub fn dev_port_busy(cwd: String) -> Option<PortBusy> {
+    let port = scanner::dev_url_port(std::path::Path::new(&cwd))?;
+    port_listener(port).map(|(pid, process)| PortBusy { port, pid, process })
+}
+
+/// 用 lsof 查谁在 LISTEN 这个端口(取第一个)。lsof 缺失/端口空闲 → None。
+/// -F pcn 按字段分行:p<pid> c<命令名> n<地址>。
+fn port_listener(port: u16) -> Option<(u32, String)> {
+    let output = std::process::Command::new("lsof")
+        .args([
+            "-nP",
+            &format!("-iTCP:{port}"),
+            "-sTCP:LISTEN",
+            "-F",
+            "pcn",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut pid: Option<u32> = None;
+    let mut name = String::new();
+    for line in text.lines() {
+        match line.split_at(1) {
+            ("p", v) => pid = v.parse().ok(),
+            ("c", v) => name = v.to_string(),
+            _ => {}
+        }
+        if pid.is_some() && !name.is_empty() {
+            break;
+        }
+    }
+    pid.map(|p| (p, name))
+}
+
 #[tauri::command]
 pub fn run_command(
     reg: State<Registry>,

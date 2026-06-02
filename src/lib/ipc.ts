@@ -1,6 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport, GitBrief, GitDetail, ProjectContext } from './types'
+import type { Config, ScanResult, Orphan, RunEvent, RunInfo, MemReport, GitBrief, GitDetail, ProjectContext, DevPort, PortBusy } from './types'
 
 /// 拉起原生目录选择器,返回选中的绝对路径;取消返回 null。
 export async function pickDirectory(): Promise<string | null> {
@@ -26,6 +26,10 @@ export const replay = (runId: string) => invoke<string>('replay', { runId })
 export const openDevtools = () => invoke<void>('open_devtools')
 export const listRuns = () => invoke<RunInfo[]>('list_runs')
 export const runsMemory = () => invoke<MemReport>('runs_memory')
+/// 各绑定目录声明的 Tauri dev 端口(静态体检"不同项目同端口")。
+export const devPorts = () => invoke<DevPort[]>('dev_ports')
+/// 启动前探测:该 cwd 的 Tauri dev 端口此刻是否已被占用(null=空闲/未声明)。
+export const devPortBusy = (cwd: string) => invoke<PortBusy | null>('dev_port_busy', { cwd })
 export const listOrphans = () => invoke<Orphan[]>('list_orphans')
 export const killOrphan = (pgid: number) => invoke<void>('kill_orphan', { pgid })
 export const gitBrief = (path: string) => invoke<GitBrief>('git_brief', { path })

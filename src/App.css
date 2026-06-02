@@ -601,6 +601,21 @@ html.resizing .runtabs {
   line-height: 16px;
 }
 
+/* "不同项目同 dev 端口"冲突徽标:琥珀色警示,颜色即语义(无装饰 icon),详情在 title */
+.dir-port-conflict {
+  flex-shrink: 0;
+  cursor: help;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #ffcf7a;
+  background: rgba(255, 176, 60, 0.12);
+  border: 1px solid rgba(255, 176, 60, 0.4);
+  border-radius: 99px;
+  padding: 0 7px;
+  line-height: 15px;
+}
+
 /* 项目名后的"在跑数":绿色小药丸,对齐 running-chip(绿)+ dir-count(尺寸) */
 .project-running {
   margin-left: 8px;

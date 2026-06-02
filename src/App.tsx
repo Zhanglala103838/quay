@@ -13,7 +13,8 @@ import { listen } from '@tauri-apps/api/event'
 import { useStore, type RunState } from './state/store'
 import { useSettings } from './state/settings'
 import { applyUiFontVars } from './lib/fonts'
-import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openInVscode } from './lib/ipc'
+import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openInVscode, devPortBusy } from './lib/ipc'
+import { askConfirm } from './state/confirm'
 import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
 import { showToast } from './state/toast'
@@ -151,6 +152,30 @@ export default function App() {
     })
   }
 
+  // 启动前探测(仅用户点击单条命令时):tauri dev 类命令会让窗口加载 devUrl,
+  // 若声明的 dev 端口此刻已被别的进程占住,继续启动会加载到错的应用 —— 弹一次性确认。
+  // 边界:只认 `tauri dev`(唯一读 devUrl 的命令);端口空闲/未声明端口/探测失败 → 不打扰,直接跑。
+  // restart/组启动/开终端走原始 onRun,不经此探测(它们是显式意图,别重复 nag)。
+  const onRunGuarded = async (label: string, cwd: string, command: string, interactive = false) => {
+    if (/tauri\s+dev\b/i.test(command)) {
+      try {
+        const busy = await devPortBusy(cwd)
+        if (busy) {
+          askConfirm({
+            title: `端口 ${busy.port} 已被占用`,
+            message: `进程「${busy.process}」(pid ${busy.pid}) 正在监听 ${busy.port}。继续启动会让本项目的 Tauri 窗口加载到该端口上的应用(很可能是另一个项目)。建议先停掉占用方,或给其中一个项目改 dev 端口。`,
+            confirmText: '仍然启动',
+            onConfirm: () => onRun(label, cwd, command, interactive),
+          })
+          return
+        }
+      } catch {
+        // 探测失败(无 lsof 等)不阻塞启动
+      }
+    }
+    onRun(label, cwd, command, interactive)
+  }
+
   // 一键并行跑整组:逐条 onRun(非阻塞 → 各开各的 tab)。已在运行的成员跳过,
   // 避免把跑着的 dev server 再撞起来吃 EADDRINUSE。
   const runGroup = (group: CommandGroup) => {
@@ -231,7 +256,7 @@ export default function App() {
           </div>
         </div>
         <div className="main">
-          <Sidebar onRun={onRun} onRunGroup={runGroup} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
+          <Sidebar onRun={onRunGuarded} onRunGroup={runGroup} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
           <Workspace writers={writers} onRestart={restartRun} />
         </div>
         <RunningBar />

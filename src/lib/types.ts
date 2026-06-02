@@ -39,6 +39,11 @@ export type RunEvent =
 export interface MemStat { runId: string; memBytes: number; ports: number[] }
 export interface MemReport { appBytes: number; runs: MemStat[] }
 
+/// 某绑定目录声明的 Tauri dev 端口(tauri.conf devUrl)。用于"不同项目同端口"体检。
+export interface DevPort { projectId: string; projectName: string; path: string; port: number }
+/// 端口被谁占了(lsof 实测)。启动前探测,防 Tauri 窗口加载到错的应用。
+export interface PortBusy { port: number; pid: number; process: string }
+
 /// 后端仍在跑(或最近退出)的 run,用于前端 reload 后恢复。
 export interface RunInfo {
   runId: string

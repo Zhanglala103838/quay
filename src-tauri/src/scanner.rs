@@ -40,6 +40,27 @@ pub fn scan_directory(dir: &str) -> ScanResult {
     ScanResult { commands, dir_exists: true, detected_sources }
 }
 
+/// 读 `<dir>/src-tauri/tauri.conf.json` 的 build.devUrl,抽出端口号。
+/// 用于"不同项目同端口"检测:Tauri 窗口 dev 时死命加载这个 devUrl,
+/// 两个项目声明同端口 → 谁先占住端口,另一个的窗口就加载错应用。
+/// 无 tauri 项目 / 无 devUrl / 解析失败 → None(静默,不猜)。
+pub fn dev_url_port(dir: &Path) -> Option<u16> {
+    let conf = dir.join("src-tauri").join("tauri.conf.json");
+    let text = std::fs::read_to_string(conf).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let url = v.get("build")?.get("devUrl")?.as_str()?;
+    port_of_url(url)
+}
+
+/// 从 URL 抽端口:`http://localhost:5173/` → 5173。无显式端口 → None(不臆测 80/443)。
+fn port_of_url(url: &str) -> Option<u16> {
+    let after_scheme = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    // 去掉 userinfo,取 host:port 的最后一段冒号后内容;IPv6 不在 dev 场景考虑。
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    host_port.rsplit_once(':').and_then(|(_, p)| p.parse::<u16>().ok())
+}
+
 /// 按锁文件判断包管理器。无锁文件默认 npm。
 fn detect_pm(dir: &Path) -> &'static str {
     if dir.join("pnpm-lock.yaml").is_file() {
@@ -53,7 +74,21 @@ fn detect_pm(dir: &Path) -> &'static str {
     }
 }
 
+/// 已知"透传脚本"(passthrough)：脚本体只是一个 CLI 二进制名，本身必须再带子命令才有意义。
+/// 典型如 `"tauri": "tauri"` —— 裸跑 `pnpm run tauri` 没意义，得 `pnpm run tauri dev`。
+/// 子命令是运行时追加的参数，package.json 里推不出来，故按 CLI 惯例展开常用子命令。
+/// 返回 (子命令, category) 列表。
+fn passthrough_subcommands(bin: &str) -> Option<&'static [(&'static str, &'static str)]> {
+    match bin {
+        "tauri" => Some(&[("dev", "dev"), ("build", "build")]),
+        "expo" => Some(&[("start", "dev"), ("prebuild", "build")]),
+        "cap" => Some(&[("run ios", "dev"), ("run android", "dev"), ("sync", "build")]),
+        _ => None,
+    }
+}
+
 /// npm：读 package.json scripts，按锁文件用对 pm。category 留空交前端推断。
+/// 透传脚本(见 passthrough_subcommands)展开为常用子命令并带显式 category。
 fn detect_npm(dir: &Path) -> Vec<Command> {
     let pkg = dir.join("package.json");
     if !pkg.is_file() {
@@ -70,7 +105,20 @@ fn detect_npm(dir: &Path) -> Vec<Command> {
     let pm = detect_pm(dir);
     let mut out = Vec::new();
     if let Some(obj) = v.get("scripts").and_then(|s| s.as_object()) {
-        for name in obj.keys() {
+        for (name, val) in obj {
+            // 按脚本体匹配，故 `"desktop": "tauri"` 这种改名写法也能命中。
+            let body = val.as_str().unwrap_or("").trim();
+            if let Some(subs) = passthrough_subcommands(body) {
+                for (sub, cat) in subs {
+                    out.push(Command {
+                        name: format!("{name} {sub}"),
+                        command: format!("{pm} run {name} {sub}"),
+                        source: pm.to_string(),
+                        category: cat.to_string(),
+                    });
+                }
+                continue;
+            }
             out.push(Command {
                 name: name.clone(),
                 command: format!("{pm} run {name}"),
@@ -360,6 +408,59 @@ mod tests {
         assert_eq!(dev.command, "npm run dev");
         assert_eq!(dev.source, "npm");
         assert_eq!(r.detected_sources, vec!["npm"]);
+    }
+
+    #[test]
+    fn port_of_url_extracts_explicit_port() {
+        assert_eq!(port_of_url("http://localhost:5173"), Some(5173));
+        assert_eq!(port_of_url("http://localhost:1420/"), Some(1420));
+        assert_eq!(port_of_url("http://127.0.0.1:3000/app?x=1"), Some(3000));
+        assert_eq!(port_of_url("http://localhost"), None); // 无显式端口不臆测
+        assert_eq!(port_of_url("https://example.com/path"), None);
+    }
+
+    #[test]
+    fn dev_url_port_reads_tauri_conf() {
+        let d = tmp("devport");
+        fs::create_dir_all(d.join("src-tauri")).unwrap();
+        fs::write(
+            d.join("src-tauri").join("tauri.conf.json"),
+            r#"{"build":{"devUrl":"http://localhost:5173"}}"#,
+        )
+        .unwrap();
+        assert_eq!(dev_url_port(&d), Some(5173));
+
+        // 非 tauri 目录 → None
+        let d2 = tmp("devport_none");
+        assert_eq!(dev_url_port(&d2), None);
+    }
+
+    #[test]
+    fn passthrough_tauri_expands_subcommands() {
+        let d = tmp("npm_tauri");
+        fs::write(d.join("package.json"), r#"{"scripts":{"dev":"vite","tauri":"tauri"}}"#).unwrap();
+        fs::write(d.join("pnpm-lock.yaml"), "lockfileVersion: 9").unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        // 裸 `pnpm run tauri` 不应出现；应展开为 dev/build 子命令
+        assert!(!r.commands.iter().any(|c| c.command == "pnpm run tauri"));
+        let dev = r.commands.iter().find(|c| c.name == "tauri dev").unwrap();
+        assert_eq!(dev.command, "pnpm run tauri dev");
+        assert_eq!(dev.category, "dev");
+        let build = r.commands.iter().find(|c| c.name == "tauri build").unwrap();
+        assert_eq!(build.command, "pnpm run tauri build");
+        assert_eq!(build.category, "build");
+        // 普通脚本不受影响
+        assert!(r.commands.iter().any(|c| c.command == "pnpm run dev"));
+    }
+
+    #[test]
+    fn passthrough_matches_body_not_name() {
+        // `"desktop": "tauri"` —— 脚本名是 desktop，但体是 tauri，应按体展开
+        let d = tmp("npm_renamed_passthrough");
+        fs::write(d.join("package.json"), r#"{"scripts":{"desktop":"tauri"}}"#).unwrap();
+        let r = scan_directory(d.to_str().unwrap());
+        assert!(r.commands.iter().any(|c| c.command == "npm run desktop dev"));
+        assert!(!r.commands.iter().any(|c| c.command == "npm run desktop"));
     }
 
     #[test]
