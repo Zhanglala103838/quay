@@ -76,7 +76,32 @@ export function Sidebar({
         </BlurFade>
       )}
 
-      {config.projects.map((p, i) => (
+      {config.projects.map((p, i) => {
+        // 把手动/AI 命令按 cwd 归到所属绑定目录(最长前缀优先);无匹配的留作项目级 orphan。
+        const norm = (s: string) => s.replace(/\/+$/, '')
+        const dirIdOfCwd = (cwd: string): string | null => {
+          let best: { id: string; len: number } | null = null
+          for (const d of p.directories) {
+            const dp = norm(d.path)
+            if (norm(cwd) === dp || norm(cwd).startsWith(dp + '/')) {
+              if (!best || dp.length > best.len) best = { id: d.id, len: dp.length }
+            }
+          }
+          return best?.id ?? null
+        }
+        const manualByDir = new Map<string, CommandEntry[]>()
+        const orphanManual: CommandEntry[] = []
+        for (const m of p.manualCommands) {
+          const did = dirIdOfCwd(m.cwd)
+          if (did) {
+            const arr = manualByDir.get(did) ?? []
+            arr.push(m)
+            manualByDir.set(did, arr)
+          } else {
+            orphanManual.push(m)
+          }
+        }
+        return (
         <BlurFade key={p.id} delay={0.05 * i}>
           <div className={'project' + (p.id === activeProjectId ? ' active' : '')}>
             <div
@@ -127,11 +152,20 @@ export function Sidebar({
                 key={d.id}
                 projectId={p.id}
                 path={d.path}
+                manualCommands={manualByDir.get(d.id) ?? []}
                 onRun={onRun}
                 onView={viewRun}
                 onOpenTerminal={onOpenTerminal}
                 onOpenVscode={onOpenVscode}
                 runningLabels={runningLabels}
+                onEditManual={(cmd) => setPending({ kind: 'manual-edit', projectId: p.id, cmd })}
+                onRemoveManual={(cmd) =>
+                  askConfirm({
+                    title: `删除命令「${cmd.label}」?`,
+                    confirmText: '删除',
+                    onConfirm: () => removeManualCommand(p.id, cmd.id),
+                  })
+                }
                 onRemove={() =>
                   askConfirm({
                     title: `删除目录绑定「${d.path.split('/').filter(Boolean).pop()}」?`,
@@ -143,10 +177,10 @@ export function Sidebar({
               />
             ))}
 
-            {p.manualCommands.length > 0 && (
+            {orphanManual.length > 0 && (
               <div className="cat manual-cat">
                 <div className="cat-label">手动</div>
-                {p.manualCommands.map((m) => (
+                {orphanManual.map((m) => (
                   <CmdRow
                     key={m.id}
                     display={m.label}
@@ -169,7 +203,8 @@ export function Sidebar({
             )}
           </div>
         </BlurFade>
-      ))}
+        )
+      })}
 
       {pending?.kind === 'project' && (
         <InputModal
@@ -428,20 +463,26 @@ function PrefixGroupNode({
 function DirNode({
   projectId,
   path,
+  manualCommands,
   onRun,
   onView,
   onOpenTerminal,
   onOpenVscode,
   runningLabels,
+  onEditManual,
+  onRemoveManual,
   onRemove,
 }: {
   projectId: string
   path: string
+  manualCommands: CommandEntry[]
   onRun: RunFn
   onView: (label: string) => void
   onOpenTerminal: (cwd: string) => void
   onOpenVscode: (path: string) => void
   runningLabels: Set<string>
+  onEditManual: (cmd: CommandEntry) => void
+  onRemoveManual: (cmd: CommandEntry) => void
   onRemove?: () => void
 }) {
   const [commands, setCommands] = useState<Command[]>([])
@@ -603,7 +644,9 @@ function DirNode({
         {sources.map((s) => (
           <span className="dir-source" key={s}>{s}</span>
         ))}
-        {commands.length > 0 && <span className="dir-count">{commands.length}</span>}
+        {commands.length + manualCommands.length > 0 && (
+          <span className="dir-count">{commands.length + manualCommands.length}</span>
+        )}
         {dirRunning > 0 && <span className="activity-dot" />}
         {/* 右侧操作区:开终端 / VSCode / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
         <span className="dir-actions" onClick={(e) => e.stopPropagation()}>
@@ -700,6 +743,25 @@ function DirNode({
               ))}
             </div>
           ))}
+          {/* 手动 / AI 识别落地的命令:按 cwd 归到本目录下(项目级 orphan 在别处渲染) */}
+          {manualCommands.length > 0 && (
+            <div className="cat">
+              <div className="cat-label">手动 / AI</div>
+              {manualCommands.map((m) => (
+                <CmdRow
+                  key={m.id}
+                  display={m.label}
+                  command={`${m.command} · ${m.cwd}`}
+                  origin={m.origin}
+                  running={runningLabels.has(m.label)}
+                  onRun={() => onRun(m.label, m.cwd, m.command)}
+                  onView={() => onView(m.label)}
+                  onEdit={() => onEditManual(m)}
+                  onRemove={() => onRemoveManual(m)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
       {pendingCtx !== null && (

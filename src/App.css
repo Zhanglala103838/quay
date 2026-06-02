@@ -1726,6 +1726,8 @@ html.resizing .runtabs {
 /* ── 侧栏 AI 能力 ── */
 .dir-toolbar {
   display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
   padding: 2px 0 6px 6px;
 }
 .ai-btn {
