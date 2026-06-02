@@ -67,6 +67,7 @@ interface Store {
   updateCommandGroup: (projectId: string, groupId: string, name: string, members: GroupMember[]) => void
   removeCommandGroup: (projectId: string, groupId: string) => void
   removeProject: (id: string) => void
+  reorderProjects: (dragId: string, overId: string) => void
   setActiveProject: (id: string) => void
   setLayout: (n: Layout) => void
   setPage: (n: number) => void
@@ -199,6 +200,18 @@ export const useStore = create<Store>((set, get) => ({
       else localStorage.removeItem(LAST_PROJECT_KEY)
     }
     set({ config: c, activeProjectId })
+    get().persist()
+  },
+  // 拖动重排:把 dragId 项目移到 overId 当前所在位置(数组顺序即渲染顺序),落盘 config。
+  reorderProjects: (dragId, overId) => {
+    if (dragId === overId) return
+    const c = structuredClone(get().config)
+    const from = c.projects.findIndex((p) => p.id === dragId)
+    const to = c.projects.findIndex((p) => p.id === overId)
+    if (from < 0 || to < 0) return
+    const [moved] = c.projects.splice(from, 1)
+    c.projects.splice(to, 0, moved)
+    set({ config: c })
     get().persist()
   },
   setActiveProject: (id) => {

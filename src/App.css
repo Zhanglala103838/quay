@@ -337,6 +337,28 @@ html.resizing .runtabs {
   align-items: center;
   justify-content: space-between;
   padding: 2px 4px 8px;
+  cursor: grab; /* 可拖动重排;点击仍设为当前项目 */
+}
+
+/* 项目折叠 caret(头部常驻,折叠只藏项目体) */
+.project-caret {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 5px 0 0;
+}
+.project-caret:hover { color: var(--text-bright); }
+
+/* 拖动重排视觉:被拖项半透明,落点项顶部高亮插入线 */
+.project.dragging { opacity: 0.45; }
+.project.dragging .project-head { cursor: grabbing; }
+.project.drop-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 2px 0 0 var(--accent);
 }
 
 .project-name {

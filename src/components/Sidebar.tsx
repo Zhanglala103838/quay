@@ -51,6 +51,7 @@ export function Sidebar({
     updateCommandGroup,
     removeCommandGroup,
     removeProject,
+    reorderProjects,
     setActiveProject,
     focusRun,
   } = useStore()
@@ -67,6 +68,32 @@ export function Sidebar({
   const runningByProject = (pid: string) =>
     runs.filter((r) => r.projectId === pid && r.status === 'running').length
   const [pending, setPending] = useState<Pending>(null)
+
+  // 项目折叠态:UI 视图态,存 localStorage 按 id 记,跨 reload 保留,默认展开。
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem('quay.collapsedProjects') || '[]'))
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const toggleCollapse = (pid: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(pid)) next.delete(pid)
+      else next.add(pid)
+      localStorage.setItem('quay.collapsedProjects', JSON.stringify([...next]))
+      return next
+    })
+
+  // 拖动重排:dragId=正在拖的项目;overId=悬停目标(画插入高亮)。drop 时落盘。
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+  const onProjectDrop = (targetId: string) => {
+    if (dragId && dragId !== targetId) reorderProjects(dragId, targetId)
+    setDragId(null)
+    setOverId(null)
+  }
 
   return (
     <div className="sidebar">
@@ -108,15 +135,53 @@ export function Sidebar({
             orphanManual.push(m)
           }
         }
+        const isCollapsed = collapsed.has(p.id)
         return (
         <BlurFade key={p.id} delay={0.05 * i}>
-          <div className={'project' + (p.id === activeProjectId ? ' active' : '')}>
+          <div
+            className={
+              'project' +
+              (p.id === activeProjectId ? ' active' : '') +
+              (dragId === p.id ? ' dragging' : '') +
+              (overId === p.id && dragId !== p.id ? ' drop-over' : '')
+            }
+          >
             <div
               className="project-head"
+              draggable
               onClick={() => setActiveProject(p.id)}
               aria-label="设为当前项目"
-              style={{ cursor: 'pointer' }}
+              onDragStart={(e) => {
+                setDragId(p.id)
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(e) => {
+                if (dragId && dragId !== p.id) {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (overId !== p.id) setOverId(p.id)
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                onProjectDrop(p.id)
+              }}
+              onDragEnd={() => {
+                setDragId(null)
+                setOverId(null)
+              }}
             >
+              <button
+                className="project-caret"
+                aria-label={isCollapsed ? '展开项目' : '折叠项目'}
+                title={isCollapsed ? '展开' : '折叠'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleCollapse(p.id)
+                }}
+              >
+                {isCollapsed ? '▸' : '▾'}
+              </button>
               <span className="project-name">
                 {p.name}
                 {runningByProject(p.id) > 0 && (
@@ -161,6 +226,8 @@ export function Sidebar({
               </span>
             </div>
 
+            {!isCollapsed && (
+              <>
             {p.directories.map((d) => (
               <DirNode
                 key={d.id}
@@ -237,6 +304,8 @@ export function Sidebar({
                   />
                 ))}
               </div>
+            )}
+              </>
             )}
           </div>
         </BlurFade>
