@@ -90,9 +90,9 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 | 平台 | 文件 | 说明 |
 |------|------|------|
 | **macOS** (Apple Silicon) | `Quay_x.y.z_aarch64.dmg` | 已经过 Apple 公证，打开拖进「应用程序」即可，无需任何「允许未知开发者」操作 |
-| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | 实验性 · **未代码签名**，首次运行 SmartScreen 提示时点「更多信息 → 仍要运行」 |
+| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | **未代码签名**，首次运行 SmartScreen 提示时点「更多信息 → 仍要运行」 |
 
-> Windows 版为新移植（Tauri 跨平台），核心的多命令并行 / 实时内存 / 端口可见均已具备；"用编辑器/终端打开目录"暂未支持（依赖 macOS 机制）。
+> Windows 版为新移植（Tauri 跨平台）：多命令并行 / 实时内存 / 端口可见 / 用编辑器·终端打开目录均已支持。
 
 ---
 
@@ -188,9 +188,9 @@ Grab the latest build for your platform from [Releases](https://github.com/Zhang
 | Platform | File | Notes |
 |----------|------|-------|
 | **macOS** (Apple Silicon) | `Quay_x.y.z_aarch64.dmg` | Apple-notarized — just drag into Applications, no Gatekeeper friction |
-| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | Experimental · **not code-signed** — on first run click "More info → Run anyway" past SmartScreen |
+| **Windows** (x64) | `Quay_x.y.z_x64-setup.exe` | **Not code-signed** — on first run click "More info → Run anyway" past SmartScreen |
 
-> Windows is a fresh Tauri cross-platform port: parallel commands, live per-process memory, and port visibility all work; "open dir in editor/terminal" is not yet supported there (relies on a macOS mechanism).
+> Windows is a fresh Tauri cross-platform port: parallel commands, live per-process memory, port visibility, and "open dir in editor/terminal" all work.
 
 ## Build from source
 
