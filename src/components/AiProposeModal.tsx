@@ -37,7 +37,7 @@ export function AiProposeModal({
     <div className="modal" onMouseDown={onCancel}>
       <div className="modal-box ai-propose" onMouseDown={(e) => e.stopPropagation()}>
         <BorderBeam duration={7} />
-        <h3>✨ AI 识别到 {proposals.length} 条可运行命令</h3>
+        <h3>AI 识别到 {proposals.length} 条可运行命令</h3>
         {proposals.length === 0 && (
           <div className="ai-empty">AI 未能从该项目推断出可运行命令。</div>
         )}

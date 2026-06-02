@@ -6,6 +6,9 @@ import { listen } from '@tauri-apps/api/event'
 import type { Command, ScanResult, CommandEntry, CommandGroup, Proposal, ProjectContext, DevPort } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
+import { editorByKey, terminalByKey } from '../lib/launchers'
+import { EditorIcon, TerminalIcon } from './AppIcons'
+import { FolderPlusIcon, CommandPlusIcon, GroupPlusIcon } from './ActionIcons'
 import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
 import { AiProposeModal } from './AiProposeModal'
 import { AiContextModal } from './AiContextModal'
@@ -32,12 +35,12 @@ export function Sidebar({
   onRun,
   onRunGroup,
   onOpenTerminal,
-  onOpenVscode,
+  onOpenEditor,
 }: {
   onRun: RunFn
   onRunGroup: (group: CommandGroup) => void
   onOpenTerminal: (cwd: string) => void
-  onOpenVscode: (path: string) => void
+  onOpenEditor: (path: string) => void
 }) {
   const {
     config,
@@ -215,25 +218,28 @@ export function Sidebar({
               </span>
               <span className="project-actions" onClick={(e) => e.stopPropagation()}>
                 <button
-                  className="pill-btn"
-                  aria-label="绑定含 package.json 的目录"
+                  className="act-icon"
+                  title="新增目录(绑定含 package.json 等清单的目录)"
+                  aria-label="新增目录"
                   onClick={() => setPending({ kind: 'dir', projectId: p.id })}
                 >
-                  +目录
+                  <FolderPlusIcon />
                 </button>
                 <button
-                  className="pill-btn"
-                  aria-label="新增手动命令"
+                  className="act-icon"
+                  title="新增命令(手动添加一条可运行命令)"
+                  aria-label="新增命令"
                   onClick={() => setPending({ kind: 'manual', projectId: p.id })}
                 >
-                  +命令
+                  <CommandPlusIcon />
                 </button>
                 <button
-                  className="pill-btn"
-                  aria-label="新建聚合命令组"
+                  className="act-icon"
+                  title="新建命令组(把多条命令聚成一组一起跑)"
+                  aria-label="新建命令组"
                   onClick={() => setPending({ kind: 'group', projectId: p.id })}
                 >
-                  +组
+                  <GroupPlusIcon />
                 </button>
                 <DeleteButton
                   title="移除项目"
@@ -261,7 +267,7 @@ export function Sidebar({
                 onRun={onRun}
                 onView={viewRun}
                 onOpenTerminal={onOpenTerminal}
-                onOpenVscode={onOpenVscode}
+                onOpenEditor={onOpenEditor}
                 runningLabels={runningLabels}
                 onEditManual={(cmd) => setPending({ kind: 'manual-edit', projectId: p.id, cmd })}
                 onRemoveManual={(cmd) =>
@@ -594,7 +600,7 @@ function CmdRow({
         title={running ? '单击查看 · 双击再次运行' : undefined}
       >
         <span className={'run-icon' + (running ? ' on' : '')}>{running ? '●' : '▶'}</span>
-        {origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">✨</span>}
+        {origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">◆</span>}
         <span className="cmd-name">{display}</span>
         {source && <span className="cmd-source">{source}</span>}
         {running && <span className="cmd-running-tag">运行中</span>}
@@ -691,7 +697,7 @@ function DirNode({
   onRun,
   onView,
   onOpenTerminal,
-  onOpenVscode,
+  onOpenEditor,
   runningLabels,
   onEditManual,
   onRemoveManual,
@@ -704,7 +710,7 @@ function DirNode({
   onRun: RunFn
   onView: (label: string) => void
   onOpenTerminal: (cwd: string) => void
-  onOpenVscode: (path: string) => void
+  onOpenEditor: (path: string) => void
   runningLabels: Set<string>
   onEditManual: (cmd: CommandEntry) => void
   onRemoveManual: (cmd: CommandEntry) => void
@@ -717,6 +723,16 @@ function DirNode({
   const [warn, setWarn] = useState('')
   const [open, setOpen] = useState(false) // 目录默认收起
   const configured = useSettings((s) => s.configured)
+  // 默认编辑器 / 终端取自工具设置:决定右侧两个动作按钮的图标与提示文案。
+  const tools = useSettings((s) => s.tools)
+  const editor = editorByKey(tools.editor)
+  const editorTitle = `用 ${editor.label} 打开此目录`
+  const termTitle =
+    tools.terminalMode === 'external'
+      ? `用 ${terminalByKey(tools.externalTerminal).label} 在此目录开终端`
+      : '在此目录打开内置终端'
+  // 外置模式下按钮图标跟随所选终端;内置则用通用 `>_` 字形(termKey=undefined)。
+  const termIconKey = tools.terminalMode === 'external' ? tools.externalTerminal : undefined
   // AI 分组开关按目录持久化(重启不丢);分组结果本身已由 smartGroup 缓存在 localStorage。
   const aiModeKey = `quay.aimode.${path}`
   const [aiMode, setAiMode] = useState(() => localStorage.getItem(aiModeKey) === '1')
@@ -900,25 +916,25 @@ function DirNode({
           <span className="dir-count">{commands.length + manualCommands.length}</span>
         )}
         {dirRunning > 0 && <span className="activity-dot" />}
-        {/* 右侧操作区:开终端 / VSCode / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
+        {/* 右侧操作区:开终端 / 编辑器 / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
         <span className="dir-actions" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             className="dir-act-btn"
-            aria-label="在此目录打开终端"
-            title="在此目录打开终端"
+            aria-label={termTitle}
+            title={termTitle}
             onClick={() => onOpenTerminal(path)}
           >
-            <TerminalIcon />
+            <TerminalIcon termKey={termIconKey} />
           </button>
           <button
             type="button"
             className="dir-act-btn"
-            aria-label="用 VSCode 打开此目录"
-            title="用 VSCode 打开此目录"
-            onClick={() => onOpenVscode(path)}
+            aria-label={editorTitle}
+            title={editorTitle}
+            onClick={() => onOpenEditor(path)}
           >
-            <VscodeIcon />
+            <EditorIcon editorKey={editor.key} />
           </button>
           {onRemove && <DeleteButton title="删除此目录绑定" onClick={onRemove} />}
         </span>
@@ -943,9 +959,9 @@ function DirNode({
                       <span className="ai-spinner" /> 分组中…
                     </>
                   ) : aiMode ? (
-                    '✨ AI 分组 · 开'
+                    'AI 分组 · 开'
                   ) : (
-                    '✨ AI 智能分组'
+                    'AI 智能分组'
                   )}
                 </button>
               )}
@@ -960,7 +976,7 @@ function DirNode({
                     <span className="ai-spinner" /> AI 识别中…
                   </>
                 ) : (
-                  '✨ 让 AI 识别'
+                  '让 AI 识别'
                 )}
               </button>
             </div>
@@ -1035,32 +1051,3 @@ function DirNode({
   )
 }
 
-/// 终端图标(lucide square-terminal 风格,描边)。
-function TerminalIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m7 9 3 3-3 3" />
-      <path d="M13 15h4" />
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-    </svg>
-  )
-}
-
-/// VSCode 官方 logo(单色填充 currentColor)。
-function VscodeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-      <path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
-    </svg>
-  )
-}

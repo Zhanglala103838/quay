@@ -13,7 +13,8 @@ import { listen } from '@tauri-apps/api/event'
 import { useStore, type RunState } from './state/store'
 import { useSettings } from './state/settings'
 import { applyUiFontVars } from './lib/fonts'
-import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openInVscode, devPortBusy } from './lib/ipc'
+import { runCommand, attachRun, listRuns, listOrphans, stopCommand, closeCommand, openWithApp, devPortBusy } from './lib/ipc'
+import { editorByKey, terminalByKey } from './lib/launchers'
 import { askConfirm } from './state/confirm'
 import { termRegistry } from './lib/termRegistry'
 import { notifyCommandDone } from './lib/notify'
@@ -196,15 +197,24 @@ export default function App() {
     else showToast(`组「${group.name}」: 已启动 ${started}${skipped > 0 ? ` · 跳过 ${skipped} 运行中` : ''}`)
   }
 
-  // 在某目录开一个可输入的交互终端(zsh -li),归到该项目右侧终端区。每次点都新开一个。
+  // 开终端:按设置走「内置」或「外置」。
+  // 内置 = 应用内可输入交互终端(zsh -li),归到该项目右侧终端区,每次点都新开一个。
+  // 外置 = 用选定的终端 app(Terminal/Ghostty/cmux…)在该目录开会话;没装则浮层提示。
   const onOpenTerminal = (cwd: string) => {
+    const t = useSettings.getState().tools
+    if (t.terminalMode === 'external') {
+      const term = terminalByKey(t.externalTerminal)
+      openWithApp(cwd, term.bundleIds).catch(() => showToast(`未检测到 ${term.label}`))
+      return
+    }
     const dirName = cwd.split('/').filter(Boolean).pop() || cwd
     onRun(`${dirName} ⌨`, cwd, 'zsh -li', true)
   }
 
-  // 用电脑的 VSCode 打开该目录;没装则浮层提示。
-  const onOpenVscode = (path: string) => {
-    openInVscode(path).catch(() => showToast('未检测到 VSCode'))
+  // 用设定的默认编辑器打开该目录;没装则浮层提示。
+  const onOpenEditor = (path: string) => {
+    const ed = editorByKey(useSettings.getState().tools.editor)
+    openWithApp(path, ed.bundleIds).catch(() => showToast(`未检测到 ${ed.label}`))
   }
 
   // 重新启动:用新 runId 起同一条命令替换旧格。运行中要先停、等进程真正退出
@@ -256,7 +266,7 @@ export default function App() {
           </div>
         </div>
         <div className="main">
-          <Sidebar onRun={onRunGuarded} onRunGroup={runGroup} onOpenTerminal={onOpenTerminal} onOpenVscode={onOpenVscode} />
+          <Sidebar onRun={onRunGuarded} onRunGroup={runGroup} onOpenTerminal={onOpenTerminal} onOpenEditor={onOpenEditor} />
           <Workspace writers={writers} onRestart={restartRun} />
         </div>
         <RunningBar />

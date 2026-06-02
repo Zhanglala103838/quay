@@ -144,23 +144,45 @@ pub fn write_run(reg: State<Registry>, run_id: String, data: String) -> Result<(
     runner::write_run(&reg, &run_id, &data)
 }
 
-/// 用 VSCode 打开某目录。优先经 LaunchServices 按 bundle id 启动(无需安装 `code` CLI);
-/// 未注册任何 VSCode bundle(没装)时返回 Err,前端据此弹「未检测到 VSCode」。
+/// 经 LaunchServices 按 bundle id 打开某目录(编辑器把它当 workspace 打开;
+/// 终端 app —— Terminal/Ghostty/cmux 等均声明了 folder 文档类型 —— 则在该目录开会话)。
+/// 无需任何 CLI。按 `bundle_ids` 顺序尝试,命中第一个即成功;一个都没装(或都启动失败)
+/// 返回 Err,前端据此弹「未检测到 X」。async = 在线程池跑,`open` 阻塞时不卡 UI 主线程。
 #[tauri::command]
-pub fn open_in_vscode(path: String) -> Result<(), String> {
+pub async fn open_with_app(path: String, bundle_ids: Vec<String>) -> Result<(), String> {
     use std::process::Command;
-    let open_bundle = |bid: &str| -> bool {
-        Command::new("open")
+    for bid in &bundle_ids {
+        let ok = Command::new("open")
             .args(["-b", bid, &path])
             .status()
             .map(|s| s.success())
-            .unwrap_or(false)
-    };
-    if open_bundle("com.microsoft.VSCode") || open_bundle("com.microsoft.VSCodeInsiders") {
-        Ok(())
-    } else {
-        Err("未检测到 VSCode".into())
+            .unwrap_or(false);
+        if ok {
+            return Ok(());
+        }
     }
+    Err("未检测到目标应用".into())
+}
+
+/// 扫描给定 bundle id 哪些已安装,返回已装子集。用 `mdfind`(Spotlight 元数据查询):
+/// 只读索引,**绝不启动 app**。这点至关重要 —— 早期版本用 `osascript 'path to application id'`,
+/// 在本机会真把被解析到的 todesktop/Electron 应用(Cursor、cmux 等)启动起来(打开设置即弹一堆窗口)。
+/// mdfind 命中即返回路径(stdout 非空),未装则 stdout 为空。bundle id 仅含 [A-Za-z0-9.-],无引号注入风险。
+/// **设为 async**:本机要顺序 spawn 多达十几个 mdfind 进程,同步 command 会跑在 UI 主线程上把窗口卡住
+/// (打开设置时「点击像没生效」)。async command 由 Tauri 丢到线程池跑,主线程不阻塞(同 git_brief 的处理)。
+#[tauri::command]
+pub async fn detect_apps(bundle_ids: Vec<String>) -> Vec<String> {
+    use std::process::Command;
+    bundle_ids
+        .into_iter()
+        .filter(|bid| {
+            Command::new("mdfind")
+                .arg(format!("kMDItemCFBundleIdentifier == '{bid}'"))
+                .output()
+                .map(|o| o.status.success() && !o.stdout.is_empty())
+                .unwrap_or(false)
+        })
+        .collect()
 }
 
 #[tauri::command]

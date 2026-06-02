@@ -68,12 +68,25 @@
   --text-dim: #6b7d93;
   --text-bright: #f0f6ff;
 
-  /* 强调 */
-  --accent: #38e8ff;
-  --accent-soft: rgba(56, 232, 255, 0.14);
-  --green: #34e8a4;
-  --red: #ff6b6b;
-  --amber: #fbbf24;
+  /* ─── 语义信号色(基础值,可在「设置 · 外观」里改;applyTheme 仅覆盖这 5 个) ───
+     一种语义一种色,跨场景不复用:
+     AI/智能=紫 · 扫描/工具链=青(accent) · 运行=绿 · 警告/冲突=琥珀 · 危险=红 */
+  --accent: #38e8ff;        /* 主强调 / 扫描 / 工具链识别 */
+  --ai: #7c5cff;            /* AI/智能:智能分组/让AI识别/AI命令标记/AI推导工具链/AI解释 */
+  --green: #34e8a4;         /* 运行中 / 成功 */
+  --amber: #fbbf24;         /* 警告 / 冲突 */
+  --red: #ff6b6b;           /* 危险 / 删除 */
+
+  /* 衍生 token:用相对颜色语法从基础色派生,改基础色即全自动级联(Safari 16.4+/macOS) */
+  --accent-soft: rgb(from var(--accent) r g b / 0.14);
+  --ai-text: hsl(from var(--ai) h s calc(l + 14%));  /* 紫底上更亮的文字/图标 */
+  --ai-bg: rgb(from var(--ai) r g b / 0.12);
+  --ai-border: rgb(from var(--ai) r g b / 0.4);
+
+  /* 非用户编辑色 */
+  --git-remote: #6366f1;    /* git 远程分支专属靛蓝(AI 撤出后不再共用) */
+  --group-bg: rgba(150, 160, 180, 0.12);    /* 分组徽标:中性灰,不抢信号色 */
+  --group-border: rgba(150, 160, 180, 0.25);
 
   --blur: 22px;
 }

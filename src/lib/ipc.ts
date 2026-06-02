@@ -49,8 +49,14 @@ export function runCommand(
 export const writeRun = (runId: string, data: string) =>
   invoke<void>('write_run', { runId, data })
 
-/// 用 VSCode 打开目录;未装 VSCode 时 reject("未检测到 VSCode")。
-export const openInVscode = (path: string) => invoke<void>('open_in_vscode', { path })
+/// 经 LaunchServices 用某 app 打开目录(编辑器当 workspace / 终端在该目录开会话)。
+/// 按 bundleIds 顺序尝试,命中第一个即成功;一个都没装则 reject(前端据此弹「未检测到 X」)。
+export const openWithApp = (path: string, bundleIds: string[]) =>
+  invoke<void>('open_with_app', { path, bundleIds })
+
+/// 扫描给定 bundle id 哪些已安装(走 LaunchServices,不依赖 Spotlight)。返回已装子集。
+export const detectApps = (bundleIds: string[]) =>
+  invoke<string[]>('detect_apps', { bundleIds })
 
 /// 前端 reload 后给已有 run 重新挂 Channel(后端会回放历史 + 续接实时)。
 export function attachRun(runId: string, onEvent: (e: RunEvent) => void): Promise<void> {

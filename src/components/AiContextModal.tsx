@@ -41,7 +41,7 @@ export function AiContextModal({
     <div className="modal" onMouseDown={onCancel}>
       <div className="modal-box ai-context" onMouseDown={(e) => e.stopPropagation()}>
         <BorderBeam duration={7} />
-        <h3>✨ AI 识别 · 将发送以下文件给 DeepSeek</h3>
+        <h3>AI 识别 · 将发送以下文件给 DeepSeek</h3>
         <div className="ai-ctx-note">仅配置/清单类文件,不含源码;.env / 密钥 / 凭证已自动排除。</div>
         {context.files.length === 0 ? (
           <div className="ai-empty">未采集到可发送的配置文件(仅目录结构可供识别)。</div>

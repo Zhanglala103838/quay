@@ -101,7 +101,7 @@ export function CommandGroupModal({
                   return (
                     <label className={'group-pick-row' + (on ? ' on' : '')} key={memberKey(c)}>
                       <input type="checkbox" checked={on} onChange={() => toggle(c)} />
-                      {c.origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">✨</span>}
+                      {c.origin === 'ai' && <span className="cmd-ai-tag" title="AI 识别">◆</span>}
                       <span className="group-pick-name">{c.label}</span>
                       <code className="group-pick-cmd">{c.command}</code>
                     </label>

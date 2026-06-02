@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { type ThemeColors, DEFAULT_THEME, applyTheme } from '../lib/theme'
 
 /// DeepSeek 设置：独立 store + localStorage 持久化(不进 Tauri 配置文件,key 留本机)。
 /// 用 OpenAI 兼容端点 /v1/chat/completions —— res.model 诚实(不踩 anthropic-compat 假回显坑)。
@@ -27,6 +28,17 @@ export interface DebugSettings {
   enabled: boolean
 }
 
+/// 工具设置:侧栏「打开编辑器/终端」两个动作的目标。
+/// editor = lib/launchers.ts EDITORS 的 key;终端默认起内置 zsh,可切外置 app。
+export interface ToolsSettings {
+  /** 默认编辑器(EDITORS key);决定侧栏图标 + open_with_app 用的 bundle id */
+  editor: string
+  /** 终端动作:internal=应用内 PTY 终端 / external=用外部终端 app 在该目录开会话 */
+  terminalMode: 'internal' | 'external'
+  /** 外置终端(TERMINALS key);仅 terminalMode='external' 时生效 */
+  externalTerminal: string
+}
+
 const LS_KEY = 'quay.deepseek'
 const DEFAULTS: DeepSeekSettings = {
   baseUrl: 'https://api.deepseek.com',
@@ -47,6 +59,25 @@ const RENDER_DEFAULTS: RenderSettings = {
 const DEBUG_LS_KEY = 'quay.debug'
 const DEBUG_DEFAULTS: DebugSettings = {
   enabled: false,
+}
+
+const TOOLS_LS_KEY = 'quay.tools'
+const TOOLS_DEFAULTS: ToolsSettings = {
+  editor: 'vscode',
+  terminalMode: 'internal',
+  externalTerminal: 'terminal',
+}
+
+/// 外观设置:语义信号色覆盖。preset = 当前套用的预设 key('custom'=手动改过)。
+export interface ThemeSettings {
+  preset: string
+  colors: ThemeColors
+}
+
+const THEME_LS_KEY = 'quay.theme'
+const THEME_DEFAULTS: ThemeSettings = {
+  preset: 'aurora',
+  colors: DEFAULT_THEME,
 }
 
 function load(): DeepSeekSettings {
@@ -79,6 +110,30 @@ function loadDebug(): DebugSettings {
   return DEBUG_DEFAULTS
 }
 
+function loadTools(): ToolsSettings {
+  try {
+    const raw = localStorage.getItem(TOOLS_LS_KEY)
+    if (raw) return { ...TOOLS_DEFAULTS, ...JSON.parse(raw) }
+  } catch {
+    /* ignore */
+  }
+  return TOOLS_DEFAULTS
+}
+
+function loadTheme(): ThemeSettings {
+  try {
+    const raw = localStorage.getItem(THEME_LS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      // colors 也合并默认,防旧版缺字段
+      return { ...THEME_DEFAULTS, ...parsed, colors: { ...DEFAULT_THEME, ...parsed.colors } }
+    }
+  } catch {
+    /* ignore */
+  }
+  return THEME_DEFAULTS
+}
+
 interface SettingsStore {
   deepseek: DeepSeekSettings
   /** key 已配置 → AI 能力可用 */
@@ -88,10 +143,17 @@ interface SettingsStore {
   saveRender: (s: Partial<RenderSettings>) => void
   debug: DebugSettings
   saveDebug: (s: Partial<DebugSettings>) => void
+  tools: ToolsSettings
+  saveTools: (s: Partial<ToolsSettings>) => void
+  theme: ThemeSettings
+  saveTheme: (s: Partial<ThemeSettings>) => void
 }
 
 export const useSettings = create<SettingsStore>((set, get) => {
   const initial = load()
+  const initialTheme = loadTheme()
+  // 启动即把持久化的配色写到 :root(覆盖 index.css 默认)
+  applyTheme(initialTheme.colors)
   return {
     deepseek: initial,
     configured: !!initial.apiKey.trim(),
@@ -111,6 +173,19 @@ export const useSettings = create<SettingsStore>((set, get) => {
       const debug = { ...get().debug, ...patch }
       localStorage.setItem(DEBUG_LS_KEY, JSON.stringify(debug))
       set({ debug })
+    },
+    tools: loadTools(),
+    saveTools: (patch) => {
+      const tools = { ...get().tools, ...patch }
+      localStorage.setItem(TOOLS_LS_KEY, JSON.stringify(tools))
+      set({ tools })
+    },
+    theme: initialTheme,
+    saveTheme: (patch) => {
+      const theme = { ...get().theme, ...patch }
+      localStorage.setItem(THEME_LS_KEY, JSON.stringify(theme))
+      applyTheme(theme.colors) // 立即生效
+      set({ theme })
     },
   }
 })

@@ -11,7 +11,7 @@
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(120% 80% at 50% -10%, rgba(56, 232, 255, 0.05), transparent 60%),
+    radial-gradient(120% 80% at 50% -10%, rgb(from var(--accent) r g b / 0.05), transparent 60%),
     linear-gradient(180deg, #070c15 0%, #060a12 55%, #04070d 100%);
 }
 
@@ -43,7 +43,7 @@
   height: 36vw;
   top: 32%;
   left: 42%;
-  background: radial-gradient(circle, rgba(56, 232, 255, 0.28), transparent 70%);
+  background: radial-gradient(circle, rgb(from var(--accent) r g b / 0.28), transparent 70%);
 }
 
 /* 网点栅格 */
@@ -127,7 +127,7 @@
   object-fit: cover;
   display: block;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 6px rgba(56, 232, 255, 0.45));
+  filter: drop-shadow(0 0 6px rgb(from var(--accent) r g b / 0.45));
 }
 .titlebar-right {
   display: flex;
@@ -159,7 +159,7 @@
   color: var(--accent);
   border-color: var(--glass-border-hi);
   background: var(--accent-soft);
-  box-shadow: 0 0 14px rgba(56, 232, 255, 0.18);
+  box-shadow: 0 0 14px rgb(from var(--accent) r g b / 0.18);
 }
 .panel-btn svg {
   display: block;
@@ -184,7 +184,7 @@
   color: var(--accent);
   border-color: var(--glass-border-hi);
   background: var(--accent-soft);
-  box-shadow: 0 0 14px rgba(56, 232, 255, 0.18);
+  box-shadow: 0 0 14px rgb(from var(--accent) r g b / 0.18);
 }
 .gear-icon {
   font-size: 15px;
@@ -231,7 +231,7 @@
 .resizer.dragging::before {
   background: var(--accent);
   height: 60px;
-  box-shadow: 0 0 10px rgba(56, 232, 255, 0.5);
+  box-shadow: 0 0 10px rgb(from var(--accent) r g b / 0.5);
 }
 
 /* ───────────── Sidebar ───────────── */
@@ -375,10 +375,42 @@ html.resizing .runtabs {
   text-overflow: ellipsis;
 }
 
+/* 操作 icon 行:静止时 max-width:0 不占宽度(标题永远满行,绝不遮挡);
+   hover/键盘聚焦项目头时才展开浮现。 */
 .project-actions {
   display: flex;
-  gap: 5px;
-  flex-shrink: 0; /* chips 不被名字挤压;空间不足时名字先省略,不抢 chips */
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.22s ease, opacity 0.16s ease;
+}
+.project-head:hover .project-actions,
+.project-head:focus-within .project-actions {
+  max-width: 160px; /* 容纳 3 icon + ×;以后加按钮调大即可 */
+  opacity: 1;
+}
+
+/* 项目头 hover 操作图标按钮:小、透明底、currentColor;hover 提亮 */
+.act-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 6px;
+  line-height: 0;
+  flex-shrink: 0;
+  transition: color 0.16s, background 0.16s;
+}
+.act-icon:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* 通用小按钮（侧栏 +目录/+命令/✕） */
@@ -398,13 +430,13 @@ html.resizing .runtabs {
   border-color: var(--glass-border-hi);
   color: var(--accent);
   background: var(--accent-soft);
-  box-shadow: 0 0 14px rgba(56, 232, 255, 0.15);
+  box-shadow: 0 0 14px rgb(from var(--accent) r g b / 0.15);
 }
 .pill-btn.danger:hover {
-  border-color: rgba(255, 107, 107, 0.4);
+  border-color: rgb(from var(--red) r g b / 0.4);
   color: var(--red);
-  background: rgba(255, 107, 107, 0.1);
-  box-shadow: 0 0 14px rgba(255, 107, 107, 0.15);
+  background: rgb(from var(--red) r g b / 0.1);
+  box-shadow: 0 0 14px rgb(from var(--red) r g b / 0.15);
 }
 
 /* 统一弹窗按钮:柔和描边(不用高亮填充,避免太刺眼) */
@@ -420,22 +452,22 @@ html.resizing .runtabs {
   transition: all 0.18s;
 }
 .modal-btn.primary {
-  border-color: rgba(56, 232, 255, 0.35);
+  border-color: rgb(from var(--accent) r g b / 0.35);
   color: var(--accent);
   background: var(--accent-soft);
 }
 .modal-btn.primary:hover {
-  background: rgba(56, 232, 255, 0.16);
-  box-shadow: 0 0 14px rgba(56, 232, 255, 0.16);
+  background: rgb(from var(--accent) r g b / 0.16);
+  box-shadow: 0 0 14px rgb(from var(--accent) r g b / 0.16);
 }
 .modal-btn.danger {
-  border-color: rgba(255, 107, 107, 0.4);
+  border-color: rgb(from var(--red) r g b / 0.4);
   color: var(--red);
-  background: rgba(255, 107, 107, 0.1);
+  background: rgb(from var(--red) r g b / 0.1);
 }
 .modal-btn.danger:hover {
-  background: rgba(255, 107, 107, 0.18);
-  box-shadow: 0 0 14px rgba(255, 107, 107, 0.16);
+  background: rgb(from var(--red) r g b / 0.18);
+  box-shadow: 0 0 14px rgb(from var(--red) r g b / 0.16);
 }
 .modal-btn.ghost {
   color: var(--text-dim);
@@ -450,7 +482,7 @@ html.resizing .runtabs {
   color: var(--text-bright);
 }
 .modal-btn.accent:hover {
-  border-color: rgba(56, 232, 255, 0.4);
+  border-color: rgb(from var(--accent) r g b / 0.4);
   color: var(--accent);
   background: var(--accent-soft);
 }
@@ -482,9 +514,9 @@ html.resizing .runtabs {
 .delete-btn:hover {
   opacity: 1;
   color: var(--red);
-  border-color: rgba(255, 107, 107, 0.4);
-  background: rgba(255, 107, 107, 0.1);
-  box-shadow: 0 0 12px rgba(255, 107, 107, 0.15);
+  border-color: rgb(from var(--red) r g b / 0.4);
+  background: rgb(from var(--red) r g b / 0.1);
+  box-shadow: 0 0 12px rgb(from var(--red) r g b / 0.15);
 }
 /* 行尾删除(目录行/命令行):默认更隐,hover 行时才明显 */
 .delete-btn-right {
@@ -499,12 +531,22 @@ html.resizing .runtabs {
 }
 
 /* 目录行右侧操作区:开终端 / VSCode / 删除,整体靠右。 */
+/* 目录操作图标(终端/编辑器/×):静止时收起不占位,hover/聚焦目录行才浮现——同项目头 */
 .dir-actions {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.2s ease, opacity 0.16s ease;
+}
+.dir-path:hover .dir-actions,
+.dir-path:focus-within .dir-actions {
+  max-width: 100px; /* 容纳 终端+编辑器+× */
+  opacity: 1;
 }
 /* 终端 / VSCode 图标按钮:与 .delete-btn 同尺寸,常驻可见(主操作),hover 高亮。 */
 .dir-act-btn {
@@ -523,7 +565,8 @@ html.resizing .runtabs {
   opacity: 0.55;
   transition: all 0.18s;
 }
-.dir-path:hover .dir-act-btn {
+.dir-path:hover .dir-act-btn,
+.dir-path:focus-within .dir-act-btn {
   opacity: 0.85;
 }
 .dir-act-btn:hover {
@@ -531,7 +574,7 @@ html.resizing .runtabs {
   color: var(--accent);
   border-color: var(--glass-border-hi);
   background: var(--accent-soft);
-  box-shadow: 0 0 12px rgba(56, 232, 255, 0.15);
+  box-shadow: 0 0 12px rgb(from var(--accent) r g b / 0.15);
 }
 /* 操作区里的删除:沿用「hover 行才明显」节奏(无 .delete-btn-right 类,这里补) */
 .dir-actions .delete-btn {
@@ -588,9 +631,9 @@ html.resizing .runtabs {
 }
 /* AI 命令推导出的工具链 tag(L1 没探测到、靠 AI 识别补足,如嵌套 java 多模块的 mvn)——紫色区分来源 */
 .dir-source.ai {
-  color: #b6a6ff;
-  background: rgba(124, 92, 255, 0.12);
-  border-color: rgba(124, 92, 255, 0.4);
+  color: var(--ai-text);
+  background: var(--ai-bg);
+  border-color: var(--ai-border);
 }
 .dir-count {
   font-size: 10px;
@@ -609,8 +652,8 @@ html.resizing .runtabs {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: #ffcf7a;
-  background: rgba(255, 176, 60, 0.12);
-  border: 1px solid rgba(255, 176, 60, 0.4);
+  background: rgb(from var(--amber) r g b / 0.12);
+  border: 1px solid rgb(from var(--amber) r g b / 0.4);
   border-radius: 99px;
   padding: 0 7px;
   line-height: 15px;
@@ -621,8 +664,8 @@ html.resizing .runtabs {
   margin-left: 8px;
   padding: 0 7px;
   border-radius: 99px;
-  background: rgba(52, 232, 164, 0.12);
-  border: 1px solid rgba(52, 232, 164, 0.25);
+  background: rgb(from var(--green) r g b / 0.12);
+  border: 1px solid rgb(from var(--green) r g b / 0.25);
   color: var(--green);
   font-size: 10px;
   line-height: 16px;
@@ -688,7 +731,7 @@ html.resizing .runtabs {
   border-radius: 2px;
   flex-shrink: 0;
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(56, 232, 255, 0.7);
+  box-shadow: 0 0 8px rgb(from var(--accent) r g b / 0.7);
 }
 /* 尾部渐隐分隔线,把每个阶段框成一节 */
 .cat-label::after {
@@ -724,8 +767,9 @@ html.resizing .runtabs {
 }
 .pgroup-count {
   font-size: 10px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--text-dim);
+  background: var(--group-bg);
+  border: 1px solid var(--group-border);
   padding: 0 6px;
   border-radius: 99px;
   line-height: 16px;
@@ -742,8 +786,8 @@ html.resizing .runtabs {
   line-height: 1.5;
   padding: 7px 9px;
   margin: 4px 0;
-  background: rgba(251, 191, 36, 0.07);
-  border: 1px solid rgba(251, 191, 36, 0.18);
+  background: rgb(from var(--amber) r g b / 0.07);
+  border: 1px solid rgb(from var(--amber) r g b / 0.18);
   border-radius: 9px;
 }
 
@@ -763,16 +807,16 @@ html.resizing .runtabs {
   transition: all 0.18s;
 }
 .cmd:hover {
-  background: rgba(56, 232, 255, 0.07);
+  background: rgb(from var(--accent) r g b / 0.07);
   border-color: var(--glass-border-hi);
   transform: translateX(2px);
 }
 
 /* 运行中命令高亮 */
 .cmd.running {
-  background: rgba(52, 232, 164, 0.1);
-  border-color: rgba(52, 232, 164, 0.32);
-  box-shadow: inset 0 0 0 1px rgba(52, 232, 164, 0.12), 0 0 16px rgba(52, 232, 164, 0.12);
+  background: rgb(from var(--green) r g b / 0.1);
+  border-color: rgb(from var(--green) r g b / 0.32);
+  box-shadow: inset 0 0 0 1px rgb(from var(--green) r g b / 0.12), 0 0 16px rgb(from var(--green) r g b / 0.12);
 }
 .cmd.running .cmd-name {
   color: var(--green);
@@ -786,7 +830,7 @@ html.resizing .runtabs {
 .run-icon.on {
   color: var(--green);
   font-size: 8px;
-  filter: drop-shadow(0 0 5px rgba(52, 232, 164, 0.9));
+  filter: drop-shadow(0 0 5px rgb(from var(--green) r g b / 0.9));
   animation: pulse-glow 1.4s ease-in-out infinite;
 }
 
@@ -794,8 +838,8 @@ html.resizing .runtabs {
   margin-left: auto;
   font-size: 9.5px;
   color: var(--green);
-  background: rgba(52, 232, 164, 0.12);
-  border: 1px solid rgba(52, 232, 164, 0.28);
+  background: rgb(from var(--green) r g b / 0.12);
+  border: 1px solid rgb(from var(--green) r g b / 0.28);
   border-radius: 99px;
   padding: 0 7px;
   line-height: 15px;
@@ -876,7 +920,7 @@ html.resizing .runtabs {
   border-radius: 26px;
   object-fit: cover;
   opacity: 0.95;
-  filter: drop-shadow(0 0 28px rgba(56, 232, 255, 0.35));
+  filter: drop-shadow(0 0 28px rgb(from var(--accent) r g b / 0.35));
 }
 .empty-main-text {
   font-size: 13px;
@@ -914,7 +958,7 @@ html.resizing .runtabs {
 }
 .tab.active {
   color: var(--text-bright);
-  background: rgba(56, 232, 255, 0.08);
+  background: rgb(from var(--accent) r g b / 0.08);
   border-color: var(--glass-border-hi);
 }
 
@@ -939,8 +983,8 @@ html.resizing .runtabs {
 }
 
 .tab-stop {
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.25);
+  background: rgb(from var(--red) r g b / 0.1);
+  border: 1px solid rgb(from var(--red) r g b / 0.25);
   border-radius: 6px;
   color: var(--red);
   cursor: pointer;
@@ -950,8 +994,8 @@ html.resizing .runtabs {
   transition: all 0.18s;
 }
 .tab-stop:hover {
-  background: rgba(255, 107, 107, 0.2);
-  box-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
+  background: rgb(from var(--red) r g b / 0.2);
+  box-shadow: 0 0 10px rgb(from var(--red) r g b / 0.3);
 }
 .tab-exit {
   color: var(--text-dim);
@@ -976,7 +1020,7 @@ html.resizing .runtabs {
   transition: all 0.15s;
 }
 .tab-close:hover {
-  background: rgba(255, 107, 107, 0.16);
+  background: rgb(from var(--red) r g b / 0.16);
   color: var(--red);
 }
 
@@ -1003,8 +1047,8 @@ html.resizing .runtabs {
 .ws-clear-exited {
   padding: 5px 11px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 107, 107, 0.25);
-  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgb(from var(--red) r g b / 0.25);
+  background: rgb(from var(--red) r g b / 0.08);
   color: var(--red);
   cursor: pointer;
   font-size: 12px;
@@ -1012,8 +1056,8 @@ html.resizing .runtabs {
   transition: all 0.18s;
 }
 .ws-clear-exited:hover {
-  background: rgba(255, 107, 107, 0.18);
-  box-shadow: 0 0 12px rgba(255, 107, 107, 0.22);
+  background: rgb(from var(--red) r g b / 0.18);
+  box-shadow: 0 0 12px rgb(from var(--red) r g b / 0.22);
 }
 .ws-layout-btn {
   padding: 5px 12px;
@@ -1286,7 +1330,7 @@ html.resizing .runtabs {
   width: 100%;
   height: 0;
   border-radius: 99px;
-  background: rgba(56, 232, 255, 0.7);
+  background: rgb(from var(--accent) r g b / 0.7);
   pointer-events: auto;
   cursor: default;
   opacity: 0;
@@ -1296,10 +1340,10 @@ html.resizing .runtabs {
   will-change: transform;
 }
 .term-scroll-thumb:hover {
-  background: rgba(56, 232, 255, 0.9);
+  background: rgb(from var(--accent) r g b / 0.9);
 }
 .term-scroll-thumb:active {
-  background: #38e8ff;
+  background: var(--accent);
 }
 
 /* ───────────── 运行状态栏 ───────────── */
@@ -1341,7 +1385,7 @@ html.resizing .runtabs {
   font-weight: 700;
   font-size: 14px;
   color: var(--accent);
-  text-shadow: 0 0 12px rgba(56, 232, 255, 0.5);
+  text-shadow: 0 0 12px rgb(from var(--accent) r g b / 0.5);
 }
 .running-label {
   letter-spacing: 0.02em;
@@ -1359,8 +1403,8 @@ html.resizing .runtabs {
   gap: 6px;
   padding: 2px 9px;
   border-radius: 99px;
-  background: rgba(52, 232, 164, 0.1);
-  border: 1px solid rgba(52, 232, 164, 0.22);
+  background: rgb(from var(--green) r g b / 0.1);
+  border: 1px solid rgb(from var(--green) r g b / 0.22);
   color: var(--green);
   font-size: 11px;
   white-space: nowrap;
@@ -1371,11 +1415,11 @@ html.resizing .runtabs {
   transition: background 0.15s, border-color 0.15s;
 }
 .running-chip.clickable:hover {
-  background: rgba(52, 232, 164, 0.18);
-  border-color: rgba(52, 232, 164, 0.4);
+  background: rgb(from var(--green) r g b / 0.18);
+  border-color: rgb(from var(--green) r g b / 0.4);
 }
 .running-pop-row.clickable:hover {
-  background: rgba(52, 232, 164, 0.1);
+  background: rgb(from var(--green) r g b / 0.1);
 }
 .chip-label {
   max-width: 160px;
@@ -1386,7 +1430,7 @@ html.resizing .runtabs {
 .chip-mem {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
-  color: rgba(52, 232, 164, 0.72);
+  color: rgb(from var(--green) r g b / 0.72);
   font-variant-numeric: tabular-nums;
 }
 /* 监听端口:青色小药丸,与绿色内存拉开色相 —— 一眼可见命令开在哪个口 */
@@ -1535,7 +1579,7 @@ html.resizing .runtabs {
 }
 .field input:focus {
   border-color: var(--glass-border-hi);
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 18px rgba(56, 232, 255, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 18px rgb(from var(--accent) r g b / 0.12);
 }
 
 /* 输入框 + 「选择目录」按钮同行（手输与选择二选一） */
@@ -1553,7 +1597,7 @@ html.resizing .runtabs {
 .field-pick-btn {
   flex-shrink: 0;
   white-space: nowrap;
-  background: rgba(56, 232, 255, 0.08);
+  background: rgb(from var(--accent) r g b / 0.08);
   border: 1px solid var(--glass-border);
   color: var(--accent);
   border-radius: 10px;
@@ -1564,8 +1608,8 @@ html.resizing .runtabs {
 }
 .field-pick-btn:hover {
   border-color: var(--glass-border-hi);
-  background: rgba(56, 232, 255, 0.16);
-  box-shadow: 0 0 14px rgba(56, 232, 255, 0.18);
+  background: rgb(from var(--accent) r g b / 0.16);
+  box-shadow: 0 0 14px rgb(from var(--accent) r g b / 0.18);
 }
 
 /* 快速选择 chips（InputModal / SettingsModal 复用） */
@@ -1594,6 +1638,32 @@ html.resizing .runtabs {
   border-color: var(--glass-border-hi);
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* 启动器 chip:品牌图标 + 名称同排。图标用 currentColor 跟随 chip 文字色(选中变 accent)。 */
+.launcher-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.launcher-chip svg {
+  flex: none;
+}
+/* 未检测到安装:整体压暗,仍可点选(选中后点开会浮层提示未装)。 */
+.launcher-chip.missing {
+  opacity: 0.5;
+}
+.launcher-chip.missing.active {
+  opacity: 1;
+}
+.launcher-missing {
+  font-size: 9px;
+  color: var(--amber);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 3px;
+  line-height: 1.4;
+  opacity: 0.85;
 }
 
 /* 设置弹窗 */
@@ -1684,13 +1754,13 @@ html.resizing .runtabs {
 }
 .test-result.ok {
   color: var(--green);
-  background: rgba(52, 232, 164, 0.08);
-  border: 1px solid rgba(52, 232, 164, 0.24);
+  background: rgb(from var(--green) r g b / 0.08);
+  border: 1px solid rgb(from var(--green) r g b / 0.24);
 }
 .test-result.err {
   color: var(--red);
-  background: rgba(255, 107, 107, 0.08);
-  border: 1px solid rgba(255, 107, 107, 0.24);
+  background: rgb(from var(--red) r g b / 0.08);
+  border: 1px solid rgb(from var(--red) r g b / 0.24);
 }
 
 /* 设置弹窗:分区标题 + 分割线 */
@@ -1775,7 +1845,7 @@ html.resizing .runtabs {
 .switch.on .switch-knob {
   left: 20px;
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(56, 232, 255, 0.6);
+  box-shadow: 0 0 10px rgb(from var(--accent) r g b / 0.6);
 }
 
 /* ── 侧栏 AI 能力 ── */
@@ -1785,13 +1855,14 @@ html.resizing .runtabs {
   flex-wrap: wrap;
   padding: 2px 0 6px 6px;
 }
+/* AI 操作按钮:统一紫色(=AI 语义),颜色本身标识"这是 AI",无需 ✨ */
 .ai-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.16), rgba(56, 232, 255, 0.08));
-  border: 1px solid var(--glass-border-hi);
-  color: var(--accent);
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  color: var(--ai-text);
   border-radius: 7px;
   padding: 2px 8px;
   cursor: pointer;
@@ -1800,24 +1871,23 @@ html.resizing .runtabs {
   transition: all 0.18s;
 }
 .ai-btn:hover {
-  box-shadow: 0 0 14px rgba(99, 102, 241, 0.28);
+  box-shadow: 0 0 14px rgb(from var(--ai) r g b / 0.3);
 }
 .ai-btn.active {
-  background: linear-gradient(180deg, rgba(56, 232, 255, 0.22), rgba(56, 232, 255, 0.1));
+  background: linear-gradient(180deg, rgb(from var(--ai) r g b / 0.3), rgb(from var(--ai) r g b / 0.14));
+  border-color: rgb(from var(--ai) r g b / 0.55);
   color: var(--text-bright);
 }
 .ai-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
-/* L1 空手时,引导用户用 AI 识别——按钮更醒目 */
+/* L1 空手时,引导用户用 AI 识别——同色,仅描边更亮以提升注意力 */
 .ai-btn.suggest {
-  border-color: rgba(124, 92, 255, 0.55);
-  color: #b6a6ff;
-  background: rgba(124, 92, 255, 0.12);
+  border-color: rgb(from var(--ai) r g b / 0.55);
 }
 .ai-btn.suggest:hover {
-  box-shadow: 0 0 16px rgba(124, 92, 255, 0.35);
+  box-shadow: 0 0 16px rgb(from var(--ai) r g b / 0.35);
 }
 
 /* 命令解释按钮 + 气泡 */
@@ -1853,21 +1923,21 @@ html.resizing .runtabs {
   font-size: 11px;
   line-height: 1.6;
   color: var(--text);
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-left: 2px solid var(--accent);
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  border-left: 2px solid var(--ai);
 }
 .cmd-explain.err {
   color: var(--red);
-  background: rgba(255, 107, 107, 0.07);
-  border-color: rgba(255, 107, 107, 0.2);
+  background: rgb(from var(--red) r g b / 0.07);
+  border-color: rgb(from var(--red) r g b / 0.2);
   border-left-color: var(--red);
 }
 .ai-spinner {
   display: inline-block;
   width: 11px;
   height: 11px;
-  border: 1.5px solid rgba(56, 232, 255, 0.25);
+  border: 1.5px solid rgb(from var(--accent) r g b / 0.25);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: ai-spin 0.7s linear infinite;
@@ -1955,13 +2025,13 @@ html.resizing .runtabs {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
-  background: linear-gradient(180deg, rgba(56, 232, 255, 0.16), rgba(56, 232, 255, 0.06));
+  background: linear-gradient(180deg, rgb(from var(--accent) r g b / 0.16), rgb(from var(--accent) r g b / 0.06));
   border: 1px solid var(--glass-border-hi);
-  box-shadow: inset 0 1px 0 0 rgba(180, 230, 255, 0.12), 0 0 18px rgba(56, 232, 255, 0.1);
+  box-shadow: inset 0 1px 0 0 rgba(180, 230, 255, 0.12), 0 0 18px rgb(from var(--accent) r g b / 0.1);
   transition: all 0.22s;
 }
 .shimmer-btn:hover {
-  box-shadow: inset 0 1px 0 0 rgba(180, 230, 255, 0.2), 0 0 26px rgba(56, 232, 255, 0.28);
+  box-shadow: inset 0 1px 0 0 rgba(180, 230, 255, 0.2), 0 0 26px rgb(from var(--accent) r g b / 0.28);
   transform: translateY(-1px);
 }
 .shimmer-btn:active {
@@ -2457,8 +2527,8 @@ html.resizing .runtabs {
   color: var(--amber);
   padding: 0 6px;
   border-radius: 99px;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgb(from var(--amber) r g b / 0.3);
+  background: rgb(from var(--amber) r g b / 0.08);
 }
 /* ref 徽标 */
 .gg-ref {
@@ -2480,8 +2550,8 @@ html.resizing .runtabs {
 }
 .gg-ref-local {
   color: var(--green);
-  border-color: rgba(52, 232, 164, 0.3);
-  background: rgba(52, 232, 164, 0.08);
+  border-color: rgb(from var(--green) r g b / 0.3);
+  background: rgb(from var(--green) r g b / 0.08);
 }
 .gg-ref-remote {
   color: #a8b4f5;
@@ -2490,8 +2560,8 @@ html.resizing .runtabs {
 }
 .gg-ref-tag {
   color: var(--amber);
-  border-color: rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.08);
+  border-color: rgb(from var(--amber) r g b / 0.3);
+  background: rgb(from var(--amber) r g b / 0.08);
 }
 
 /* 轻量浮层提示(底部居中),~2.2s 自动消失。见 components/Toast.tsx + state/toast.ts。 */
@@ -2545,7 +2615,8 @@ html.resizing .runtabs {
 .ai-exist-note { color: var(--muted, #8a8a8a); font-size: 11.5px; margin: 2px 0 6px; }
 .ai-row-exist { flex-shrink: 0; font-size: 10px; color: #8a8a8a; border: 1px solid rgba(255,255,255,0.18); border-radius: 99px; padding: 0 7px; line-height: 16px; }
 /* AI 来源徽标:命令名前置,flex-shrink:0 不被挤压,不混入右侧操作区 */
-.cmd-ai-tag { font-size: 10px; flex-shrink: 0; opacity: 0.85; margin-right: -3px; }
+/* AI 来源标记:紫色小菱形◆(=AI 语义),替代旧 ✨;菱形区别于圆形运行点,颜色承担标识,title 悬浮说明 */
+.cmd-ai-tag { font-size: 8px; line-height: 1; color: var(--ai); flex-shrink: 0; margin-right: 2px; }
 
 /* 手动/AI 命令在数据上是项目级,但视觉上要缩进到「命令」层级——与目录展开后的扫描命令对齐,
    带左侧引导线,避免和目录行(.dir)同级被误读成目录的兄弟项。 */
@@ -2592,8 +2663,8 @@ html.resizing .runtabs {
   flex-shrink: 0;
   font-size: 9.5px;
   color: var(--text-dim);
-  background: rgba(255, 196, 64, 0.12);
-  border: 1px solid rgba(255, 196, 64, 0.28);
+  background: var(--group-bg);
+  border: 1px solid var(--group-border);
   border-radius: 99px;
   padding: 0 7px;
   line-height: 15px;
@@ -2640,7 +2711,7 @@ html.resizing .runtabs {
   font-size: 13px;
   margin: 8px 0;
 }
-.group-name-input:focus { outline: none; border-color: rgba(255, 196, 64, 0.5); }
+.group-name-input:focus { outline: none; border-color: rgb(from var(--amber) r g b / 0.5); }
 .group-loading,
 .group-empty { padding: 16px 4px; color: var(--muted, #8a8a8a); font-size: 13px; }
 .group-pick-list {
@@ -2668,8 +2739,8 @@ html.resizing .runtabs {
   cursor: pointer;
   min-width: 0;
 }
-.group-pick-row:hover { background: rgba(56, 232, 255, 0.06); }
-.group-pick-row.on { border-color: rgba(255, 196, 64, 0.4); background: rgba(255, 196, 64, 0.07); }
+.group-pick-row:hover { background: rgb(from var(--accent) r g b / 0.06); }
+.group-pick-row.on { border-color: rgb(from var(--amber) r g b / 0.4); background: rgb(from var(--amber) r g b / 0.07); }
 .group-pick-name { flex-shrink: 0; font-weight: 500; font-size: 12.5px; }
 .group-pick-cmd {
   min-width: 0;
@@ -2679,4 +2750,110 @@ html.resizing .runtabs {
   font-family: 'JetBrains Mono Variable', monospace;
   font-size: 11px;
   color: var(--muted, #8a8a8a);
+}
+
+/* ═══════════ 设置 · 外观/配色 ═══════════ */
+/* 预设调色板 */
+.theme-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.theme-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--glass-border);
+  background: rgb(from var(--accent) r g b / 0.04);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.theme-preset:hover {
+  border-color: var(--glass-border-hi);
+}
+.theme-preset.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
+.theme-preset-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.theme-preset-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  box-shadow: inset 0 0 0 1px rgb(from #000 r g b / 0.25);
+}
+
+/* 逐色微调 */
+.theme-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.theme-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* 色块 = 原生取色器(系统色板,非应用内 overlay,不踩 WKWebView 弹层坑) */
+.theme-swatch {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border-hi);
+  cursor: pointer;
+  overflow: hidden;
+}
+.theme-swatch input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.theme-color-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.theme-color-label {
+  font-size: 12px;
+  color: var(--text);
+}
+.theme-color-hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+/* HeroUI ColorField 的 hex 文本输入:对齐 app 的 .field input 风格,紧凑 */
+.theme-hex-group {
+  flex-shrink: 0;
+}
+.theme-hex-input {
+  width: 96px;
+  background: rgb(from var(--accent) r g b / 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  outline: none;
+  transition: border-color 0.16s;
+}
+.theme-hex-input:focus {
+  border-color: var(--accent);
 }

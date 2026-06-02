@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings, DEEPSEEK_MODELS, type DeepSeekSettings } from '../state/settings'
 import { testConnection } from '../lib/deepseek'
+import { detectApps } from '../lib/ipc'
+import { EDITORS, TERMINALS, isInstalled } from '../lib/launchers'
+import { EditorIcon, TerminalIcon } from './AppIcons'
 import { BorderBeam } from './ui/BorderBeam'
+import { ColorField, parseColor } from '@heroui/react'
+import {
+  THEME_PRESETS,
+  THEME_COLOR_META,
+  DEFAULT_THEME,
+  type ThemeColors,
+} from '../lib/theme'
 import {
   LATIN_FONTS,
   CJK_FONTS,
@@ -46,15 +56,23 @@ function FontChips({
 /// 点 tab → 平滑滚到对应分区;滚动时 scrollspy 高亮当前 tab(含滚到底部高亮末项)。
 const TABS = [
   { id: 'ai', label: '智能能力' },
+  { id: 'tools', label: '工具' },
   { id: 'fonts', label: '字体' },
+  { id: 'theme', label: '外观' },
   { id: 'render', label: '渲染' },
   { id: 'debug', label: '调试' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { deepseek, save, render, saveRender, debug, saveDebug } = useSettings()
+  const { deepseek, save, render, saveRender, debug, saveDebug, tools, saveTools, theme, saveTheme } =
+    useSettings()
   const [form, setForm] = useState<DeepSeekSettings>(deepseek)
+  const [editor, setEditor] = useState(tools.editor)
+  const [termMode, setTermMode] = useState(tools.terminalMode)
+  const [extTerm, setExtTerm] = useState(tools.externalTerminal)
+  // 已安装的 bundle id 集合(扫描结果);未装的启动器置灰但仍可选。
+  const [installed, setInstalled] = useState<ReadonlySet<string>>(new Set())
   const [gpu, setGpu] = useState(render.gpuAcceleration)
   const [termLatin, setTermLatin] = useState(render.termLatin)
   const [termCJK, setTermCJK] = useState(render.termCJK)
@@ -69,7 +87,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const contentRef = useRef<HTMLDivElement>(null)
   const paneRefs = useRef<Record<TabId, HTMLElement | null>>({
     ai: null,
+    tools: null,
     fonts: null,
+    theme: null,
     render: null,
     debug: null,
   })
@@ -79,6 +99,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const set = (k: keyof DeepSeekSettings, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
     setResult(null)
+  }
+
+  // 配色实时生效:改单色即标记为 custom 并立刻 saveTheme(应用 + 持久化)。
+  const setColor = (k: keyof ThemeColors, hex: string) =>
+    saveTheme({ preset: 'custom', colors: { ...theme.colors, [k]: hex } })
+  const safeParse = (hex: string) => {
+    try {
+      return parseColor(hex)
+    } catch {
+      return null
+    }
   }
 
   const doSave = () => {
@@ -92,6 +123,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       uiCJK,
     })
     saveDebug({ enabled: debugOn })
+    saveTools({ editor, terminalMode: termMode, externalTerminal: extTerm })
     onClose()
   }
 
@@ -125,6 +157,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
     setActive(cur)
   }
+
+  // 打开设置时扫描本机已装的编辑器/终端(走 LaunchServices,不依赖 Spotlight)。
+  useEffect(() => {
+    const ids = [...EDITORS, ...TERMINALS].flatMap((d) => d.bundleIds)
+    detectApps(ids)
+      .then((found) => setInstalled(new Set(found)))
+      .catch(() => {})
+  }, [])
 
   // Esc 关弹窗(与右键菜单一致的交互直觉)。
   useEffect(() => {
@@ -223,6 +263,87 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
             </section>
 
+            {/* ── 工具(编辑器 / 终端) ── */}
+            <section className="settings-pane" ref={(el) => { paneRefs.current.tools = el }}>
+              <div className="settings-section-label">默认编辑器</div>
+              <p className="modal-sub">
+                侧栏目录的「打开编辑器」按钮用它打开目录,按钮图标随所选变化。标「未装」的为本机未检测到,选中后点开会提示。
+              </p>
+              <div className="field">
+                <div className="field-chips">
+                  {EDITORS.map((e) => {
+                    const ok = isInstalled(e, installed)
+                    return (
+                      <button
+                        type="button"
+                        key={e.key}
+                        className={
+                          'field-chip launcher-chip' +
+                          (editor === e.key ? ' active' : '') +
+                          (ok ? '' : ' missing')
+                        }
+                        onClick={() => setEditor(e.key)}
+                      >
+                        <EditorIcon editorKey={e.key} size={13} />
+                        <span>{e.label}</span>
+                        {!ok && <span className="launcher-missing">未装</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-divider" />
+              <div className="settings-section-label">终端</div>
+              <p className="modal-sub">
+                「打开终端」按钮起应用内置终端,还是用外部终端 app 在该目录开会话。
+              </p>
+              <div className="field">
+                <div className="field-chips">
+                  <button
+                    type="button"
+                    className={'field-chip' + (termMode === 'internal' ? ' active' : '')}
+                    onClick={() => setTermMode('internal')}
+                  >
+                    内置终端
+                  </button>
+                  <button
+                    type="button"
+                    className={'field-chip' + (termMode === 'external' ? ' active' : '')}
+                    onClick={() => setTermMode('external')}
+                  >
+                    外置终端
+                  </button>
+                </div>
+              </div>
+              {termMode === 'external' && (
+                <div className="field">
+                  <label>外置终端</label>
+                  <div className="field-chips">
+                    {TERMINALS.map((t) => {
+                      const ok = isInstalled(t, installed)
+                      return (
+                        <button
+                          type="button"
+                          key={t.key}
+                          className={
+                            'field-chip launcher-chip' +
+                            (extTerm === t.key ? ' active' : '') +
+                            (ok ? '' : ' missing')
+                          }
+                          onClick={() => setExtTerm(t.key)}
+                        >
+                          <TerminalIcon termKey={t.key} size={13} />
+                          <span>{t.label}</span>
+                          {!ok && <span className="launcher-missing">未装</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </section>
+
             {/* ── 字体(终端 + 界面) ── */}
             <section className="settings-pane" ref={(el) => { paneRefs.current.fonts = el }}>
               <div className="settings-section-label">终端字体</div>
@@ -259,6 +380,80 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <div className="field">
                 <label>中文</label>
                 <FontChips keys={CJK_KEYS} reg={CJK_FONTS} value={uiCJK} onPick={setUiCJK} />
+              </div>
+            </section>
+
+            {/* ── 外观 · 配色 ── */}
+            <section className="settings-pane" ref={(el) => { paneRefs.current.theme = el }}>
+              <div className="settings-section-label">外观 · 配色</div>
+              <p className="modal-sub">
+                选一套预设,或逐色微调。改动实时生效并保存。配色按语义统一——一种语义一种色,跨场景不复用。
+              </p>
+
+              <div className="field">
+                <label>预设主题</label>
+                <div className="theme-presets">
+                  {THEME_PRESETS.map((p) => (
+                    <button
+                      type="button"
+                      key={p.key}
+                      className={'theme-preset' + (theme.preset === p.key ? ' active' : '')}
+                      onClick={() => saveTheme({ preset: p.key, colors: p.colors })}
+                    >
+                      <span className="theme-preset-dots">
+                        {(['accent', 'ai', 'green', 'amber', 'red'] as (keyof ThemeColors)[]).map(
+                          (k) => (
+                            <i key={k} style={{ background: p.colors[k] }} />
+                          ),
+                        )}
+                      </span>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="field">
+                <label>逐色微调</label>
+                <div className="theme-colors">
+                  {THEME_COLOR_META.map((m) => {
+                    const hex = theme.colors[m.key]
+                    return (
+                      <div className="theme-color-row" key={m.key}>
+                        <label className="theme-swatch" style={{ background: hex }} title="点选颜色">
+                          <input
+                            type="color"
+                            value={hex}
+                            onChange={(e) => setColor(m.key, e.target.value)}
+                          />
+                        </label>
+                        <div className="theme-color-meta">
+                          <span className="theme-color-label">{m.label}</span>
+                          <span className="theme-color-hint">{m.hint}</span>
+                        </div>
+                        <ColorField
+                          aria-label={m.label}
+                          value={safeParse(hex)}
+                          onChange={(c) => c && setColor(m.key, c.toString('hex'))}
+                        >
+                          <ColorField.Group className="theme-hex-group">
+                            <ColorField.Input className="theme-hex-input" />
+                          </ColorField.Group>
+                        </ColorField>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-test-row">
+                <button
+                  type="button"
+                  className="modal-btn"
+                  onClick={() => saveTheme({ preset: 'aurora', colors: DEFAULT_THEME })}
+                >
+                  恢复默认(极光)
+                </button>
               </div>
             </section>
 
