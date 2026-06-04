@@ -54,6 +54,9 @@ export const writeRun = (runId: string, data: string) =>
 export const openWithApp = (path: string, bundleIds: string[]) =>
   invoke<void>('open_with_app', { path, bundleIds })
 
+/// 在系统文件管理器中打开目录(mac Finder / win Explorer / linux 默认文件管理器)。
+export const revealPath = (path: string) => invoke<void>('reveal_path', { path })
+
 /// 扫描给定 bundle id 哪些已安装(走 LaunchServices,不依赖 Spotlight)。返回已装子集。
 export const detectApps = (bundleIds: string[]) =>
   invoke<string[]>('detect_apps', { bundleIds })

@@ -166,6 +166,26 @@ pub async fn open_with_app(_path: String, _bundle_ids: Vec<String>) -> Result<()
     Err("当前平台暂不支持按应用打开".into())
 }
 
+/// 在系统文件管理器中打开目录:mac → Finder(`open`)、win → Explorer(`explorer`)、
+/// linux → 默认文件管理器(`xdg-open`)。用 spawn(非阻塞且不读退出码)——
+/// Explorer 即便成功也常返回非 0,按退出码判定会误报失败;只要进程拉起就算成功。
+/// platform::command 已为 Windows 挂 CREATE_NO_WINDOW(避免黑框闪)。
+#[tauri::command]
+pub async fn reveal_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(windows)]
+    let program = "explorer";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+
+    crate::platform::command(program)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 扫描给定 bundle id 哪些已安装,返回已装子集。用 `mdfind`(Spotlight 元数据查询):
 /// 只读索引,**绝不启动 app**。这点至关重要 —— 早期版本用 `osascript 'path to application id'`,
 /// 在本机会真把被解析到的 todesktop/Electron 应用(Cursor、cmux 等)启动起来(打开设置即弹一堆窗口)。

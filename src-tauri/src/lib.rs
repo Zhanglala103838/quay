@@ -239,6 +239,7 @@ pub fn run() {
             commands::run_command,
             commands::write_run,
             commands::open_with_app,
+            commands::reveal_path,
             commands::detect_apps,
             commands::stop_command,
             commands::close_command,

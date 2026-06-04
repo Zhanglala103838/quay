@@ -54,3 +54,32 @@ export function GroupPlusIcon() {
     </Svg>
   )
 }
+
+/// 重命名:pencil(铅笔),与 GroupRow 的 ✎ 同语义,统一为线性字形。
+export function RenameIcon() {
+  return (
+    <Svg>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </Svg>
+  )
+}
+
+/// 复制路径:clipboard-copy(两层方块,无加号,区别于 GroupPlus 的"+")。
+export function CopyPathIcon() {
+  return (
+    <Svg>
+      <rect width="13" height="13" x="9" y="9" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </Svg>
+  )
+}
+
+/// 在文件管理器打开:folder-open(打开的文件夹),区别于 FolderPlus(带 +)。
+export function FolderOpenIcon() {
+  return (
+    <Svg>
+      <path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H21a1 1 0 0 1 .96 1.27l-1.43 5A2 2 0 0 1 18.6 18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.69.9H18a2 2 0 0 1 2 2v1" />
+    </Svg>
+  )
+}

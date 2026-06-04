@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { askConfirm } from '../state/confirm'
-import { scanDir, watchDir, unwatchDir, collectContext, devPorts } from '../lib/ipc'
+import { scanDir, watchDir, unwatchDir, collectContext, devPorts, revealPath } from '../lib/ipc'
+import { showToast } from '../state/toast'
 import { listen } from '@tauri-apps/api/event'
 import type { Command, ScanResult, CommandEntry, CommandGroup, Proposal, ProjectContext, DevPort } from '../lib/types'
 import { categorize, type Category, type CmdLeaf, type PrefixGroup } from '../lib/grouping'
 import { useSettings } from '../state/settings'
 import { editorByKey, terminalByKey } from '../lib/launchers'
 import { EditorIcon, TerminalIcon } from './AppIcons'
-import { FolderPlusIcon, CommandPlusIcon, GroupPlusIcon } from './ActionIcons'
+import {
+  FolderPlusIcon,
+  CommandPlusIcon,
+  GroupPlusIcon,
+  RenameIcon,
+  CopyPathIcon,
+  FolderOpenIcon,
+} from './ActionIcons'
 import { smartGroup, explainCommand, proposeCommands } from '../lib/deepseek'
 import { AiProposeModal } from './AiProposeModal'
 import { AiContextModal } from './AiContextModal'
@@ -25,6 +33,7 @@ interface RunFn {
 
 type Pending =
   | { kind: 'project' }
+  | { kind: 'project-rename'; projectId: string; name: string }
   | { kind: 'dir'; projectId: string }
   | { kind: 'manual'; projectId: string }
   | { kind: 'manual-edit'; projectId: string; cmd: CommandEntry }
@@ -54,6 +63,7 @@ export function Sidebar({
     updateCommandGroup,
     removeCommandGroup,
     removeProject,
+    renameProject,
     reorderProjects,
     setActiveProject,
     focusRun,
@@ -70,6 +80,15 @@ export function Sidebar({
   // 每个项目当前在跑数(按 projectId 归属)
   const runningByProject = (pid: string) =>
     runs.filter((r) => r.projectId === pid && r.status === 'running').length
+  // 每个项目「已结束但还没关」的终端数:折叠态也能一眼感知有残留终端(否则要点进工作区才发现)。
+  const exitedByProject = (pid: string) =>
+    runs.filter((r) => r.projectId === pid && r.status === 'exited').length
+  // 点「已结束 N」徽标:切到该项目并跳到它的第一个已结束终端,让用户看到并就地清理。
+  const viewFirstExited = (pid: string) => {
+    setActiveProject(pid)
+    const r = runs.find((x) => x.projectId === pid && x.status === 'exited')
+    if (r) focusRun(r.runId)
+  }
   const [pending, setPending] = useState<Pending>(null)
 
   // 项目折叠态:UI 视图态,存 localStorage 按 id 记,跨 reload 保留,默认展开。
@@ -215,8 +234,29 @@ export function Sidebar({
                     {runningByProject(p.id)}
                   </span>
                 )}
+                {exitedByProject(p.id) > 0 && (
+                  <span
+                    className="project-exited"
+                    role="button"
+                    title={`${exitedByProject(p.id)} 个已结束的终端 · 点击查看并清理`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      viewFirstExited(p.id)
+                    }}
+                  >
+                    {exitedByProject(p.id)} 已结束
+                  </span>
+                )}
               </span>
               <span className="project-actions" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="act-icon"
+                  title="重命名项目"
+                  aria-label="重命名项目"
+                  onClick={() => setPending({ kind: 'project-rename', projectId: p.id, name: p.name })}
+                >
+                  <RenameIcon />
+                </button>
                 <button
                   className="act-icon"
                   title="新增目录(绑定含 package.json 等清单的目录)"
@@ -348,6 +388,26 @@ export function Sidebar({
           fields={[{ key: 'name', label: '项目名(最多 6 字)', placeholder: '如 我的项目', maxLength: 6 }]}
           onSubmit={(v) => {
             addProject(v.name.trim())
+            setPending(null)
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+
+      {pending?.kind === 'project-rename' && (
+        <InputModal
+          title="重命名项目"
+          fields={[
+            {
+              key: 'name',
+              label: '项目名(最多 6 字)',
+              placeholder: '如 我的项目',
+              maxLength: 6,
+              initial: pending.name,
+            },
+          ]}
+          onSubmit={(v) => {
+            renameProject(pending.projectId, v.name)
             setPending(null)
           }}
           onCancel={() => setPending(null)}
@@ -916,8 +976,33 @@ function DirNode({
           <span className="dir-count">{commands.length + manualCommands.length}</span>
         )}
         {dirRunning > 0 && <span className="activity-dot" />}
-        {/* 右侧操作区:开终端 / 编辑器 / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
+        {/* 右侧操作区:复制路径 / 文件管理器 / 开终端 / 编辑器 / 删除。stopPropagation 避免点按钮误触发目录展开。 */}
         <span className="dir-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="dir-act-btn"
+            aria-label="复制目录路径"
+            title="复制目录路径"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(path)
+                showToast('已复制路径')
+              } catch {
+                showToast('复制失败')
+              }
+            }}
+          >
+            <CopyPathIcon />
+          </button>
+          <button
+            type="button"
+            className="dir-act-btn"
+            aria-label="在文件管理器中打开"
+            title="在文件管理器中打开"
+            onClick={() => revealPath(path).catch(() => showToast('打开文件管理器失败'))}
+          >
+            <FolderOpenIcon />
+          </button>
           <button
             type="button"
             className="dir-act-btn"

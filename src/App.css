@@ -285,13 +285,23 @@ html.resizing .runtabs {
   background: rgba(10, 16, 24, 0.92) !important;
 }
 
+/* 顶部「项目 / + 项目」常驻栏:sticky 钉在侧栏滚动容器顶部,长列表滚动也不丢。
+   负 margin 撑满侧栏左右/上内边距,自带不透明玻璃底 + backdrop blur 遮住下方滚动内容;
+   顶部圆角对齐侧栏 16px 半径,避免方角盖住圆角。 */
 .sidebar-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
-  padding: 2px 2px 14px;
+  margin: -14px -12px 18px;
+  padding: 16px 14px 14px;
+  border-radius: 16px 16px 0 0;
   border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
 }
 
 .logo {
@@ -393,7 +403,7 @@ html.resizing .runtabs {
 }
 .project-head:hover .project-actions,
 .project-head:focus-within .project-actions {
-  max-width: 160px; /* 容纳 3 icon + ×;以后加按钮调大即可 */
+  max-width: 200px; /* 容纳 ✎重命名 + 3 icon + × */
   opacity: 1;
 }
 
@@ -549,7 +559,7 @@ html.resizing .runtabs {
 }
 .dir-path:hover .dir-actions,
 .dir-path:focus-within .dir-actions {
-  max-width: 100px; /* 容纳 终端+编辑器+× */
+  max-width: 160px; /* 容纳 复制路径+文件管理器+终端+编辑器+× */
   opacity: 1;
 }
 /* 终端 / VSCode 图标按钮:与 .delete-btn 同尺寸,常驻可见(主操作),hover 高亮。 */
@@ -675,6 +685,28 @@ html.resizing .runtabs {
   line-height: 16px;
   font-family: var(--font-mono);
   vertical-align: middle;
+}
+
+/* 项目名后的"已结束终端数":中性灰药丸(休眠态,刻意不用绿色等信号色),
+   可点击 → 跳到该项目第一个已结束终端就地清理。让折叠态也能感知残留终端。 */
+.project-exited {
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 99px;
+  background: rgb(from var(--text-dim) r g b / 0.14);
+  border: 1px solid rgb(from var(--text-dim) r g b / 0.3);
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 16px;
+  font-family: var(--font-mono);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: color 0.16s, border-color 0.16s, background 0.16s;
+}
+.project-exited:hover {
+  color: var(--text);
+  border-color: var(--glass-border-hi);
+  background: rgb(from var(--text-dim) r g b / 0.22);
 }
 
 /* 折叠箭头 */
