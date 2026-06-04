@@ -53,6 +53,7 @@ Quay 是一款 macOS 桌面应用。它把你**多个项目里、各式各样的
 - **AI 智能分组**（可选，接 DeepSeek）：让模型按语义把脚本重新归类，更贴合你的心智模型。
 - **手动命令**：任意 `cwd` + 任意命令，不止于 npm scripts。
 - **`package.json` 实时监听**：脚本增删改，侧栏自动重扫，无需手动刷新。
+- **目录快捷操作**：每个目录行悬停即出「复制路径 / 在文件管理器中打开 / 用编辑器打开 / 开终端」；项目可重命名；长列表滚动时顶部「项目」栏始终吸顶常驻；终端跑完自动标记已结束。
 
 ### 🖥️ 终端工作区
 - **只读监控终端**：一键运行命令，PTY 真色彩输出，WebGL 加速渲染，5000 行 scrollback。
@@ -137,7 +138,7 @@ bash scripts/build-mac.sh
 
 ## 状态
 
-Quay 仍在活跃开发中，功能与界面可能变动。欢迎 issue 反馈。
+**1.0 是 Quay 基于 Tauri 的里程碑收官版**：此后 Tauri 版本只修复 bug、不再新增功能。开发重心已全面转向 **原生 macOS 重写**（SwiftUI + Rust 核心，内置 Ghostty 终端），以换取更纯粹的原生体验与性能。欢迎 issue 反馈。
 
 ## 致谢
 
@@ -178,6 +179,7 @@ A developer's desktop usually looks like this: 3–5 projects open at once, each
 - **Terminal workspace** — read-only monitored terminals (WebGL-accelerated PTY, 5000-line scrollback) **and** fully interactive shells (`zsh -li`: type, run `vim` / `htop`, `Ctrl+C`); 1 / 2 / 4 split layouts; all terminals stay mounted (no lost output on switch); copy last 100 / 300 / all lines.
 - **Process monitoring** — a Running Bar with global + per-process memory and the **ports each command is listening on**, `+N` overflow popover, click-to-jump. **Same-port conflict warnings**: flags when two projects declare the same dev port, and probes the port before launching `tauri dev` so a window never loads the wrong project.
 - **Git at a glance** — per-directory branch / ahead-behind / dirty status, plus a branch-graph + commit-history panel.
+- **Directory quick actions** — hover any directory row for copy-path / reveal-in-file-manager / open-in-editor / open-terminal; rename projects; the "Projects" header stays pinned while long lists scroll; terminals are auto-marked as ended when their command exits.
 - **Personalization** — pick your default editor (VS Code / Cursor / Windsurf / Zed / Sublime Text / Xcode; the sidebar button's icon follows your choice, installed apps auto-detected), default terminal (built-in or Terminal / Ghostty / cmux / iTerm2 / Warp), theme signal colors, and terminal/UI fonts.
 - **Native feel** — menubar tray (hide on close, keep running), single instance, native titlebar drag, forced dark appearance, completion notifications. **Signed + notarized** — no Gatekeeper friction.
 
@@ -206,6 +208,10 @@ bash scripts/build-mac.sh   # signed + notarized (needs your Apple Developer ID)
 ## Tech stack
 
 **Tauri 2** (Rust) · **React 19** + TypeScript + Vite + Zustand · **xterm.js 6** + WebGL · **portable-pty** (real PTY, isolated process groups) · notify-debouncer-full · DeepSeek (optional).
+
+## Status
+
+**1.0 is the milestone finale of Quay's Tauri build** — from here the Tauri version is bug-fix only, with no new features. Development has fully shifted to a **native macOS rewrite** (SwiftUI + a Rust core, with an embedded Ghostty terminal) for a purer native experience and better performance. Issues welcome.
 
 ## Acknowledgments
 
